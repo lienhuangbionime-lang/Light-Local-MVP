@@ -1,0 +1,226 @@
+[
+    {
+        "timestamp": "2026-02-14T01:55:00Z",
+        "event": "Protocol Alignment",
+        "type": "ARCH",
+        "description": "Aligned frontend CaptureView with backend ingest.py schema. Fixed content/text mismatch.",
+        "impact": "High - Restored Capture flow functionality."
+    },
+    {
+        "timestamp": "2026-02-14T02:05:00Z",
+        "event": "Schema Consolidation",
+        "type": "DB",
+        "description": "Unified all database schemas into lifeos_v3.5_full_schema.sql. Established single source of truth.",
+        "impact": "Critical - Established structural stability."
+    },
+    {
+        "timestamp": "2026-02-14T11:40:00Z",
+        "event": "Evolution Log Implementation",
+        "type": "PROTOCOL",
+        "description": "Implemented migrations/005_cortex_growth_logs.sql for Glass Box protocol transparency.",
+        "impact": "High - Auditable AI decision making."
+    },
+    {
+        "timestamp": "2026-02-14T13:50:00Z",
+        "event": "Growth Verification",
+        "type": "VERIFICATION",
+        "description": "Identified and resolved 38 critical defects across frontend client and backend API. Successfully verified build.",
+        "impact": "Critical - Proved system growth and resilience."
+    },
+    {
+        "timestamp": "2026-02-14T14:10:00Z",
+        "event": "Memory Unification",
+        "type": "API",
+        "description": "Synchronized memories.py and ingest.py to use 'memories' table. Updated Pydantic schemas for UUID and metrics.",
+        "impact": "High - Fixed data visibility across system."
+    },
+    {
+        "timestamp": "2026-02-14T14:20:00Z",
+        "event": "Codebase Purification",
+        "type": "CLEANUP",
+        "description": "Removed legacy kernel source, redundant routers, and transient test scripts. Achieved minimal production state.",
+        "impact": "Medium - Improved maintenance and handover efficiency."
+    },
+    {
+        "timestamp": "2026-02-14T15:45:00Z",
+        "event": "Intelligence Layer Activation",
+        "type": "EVOLUTION",
+        "description": "Implemented 'Glass Box' Decision Matrix (system_cortex.md) and enabled 3072-dim Semantic Search (VectorEngine + RPC)."
+    },
+    {
+        "timestamp": "2026-02-15T09:45:00Z",
+        "event": "Rate Limit Incident",
+        "type": "FIX",
+        "description": "System hit 429 errors on gemini-2.0-flash due to forced hotfix. Switched to gemini-1.5-flash (stable) and removed backend override.",
+        "impact": "High - Restored system availability."
+    },
+    {
+        "timestamp": "2026-02-23T23:20:00Z",
+        "event": "2026 Harness Engineering Upgrade",
+        "type": "ARCH",
+        "description": "Upgraded system to google.genai SDK (v1 API). Replaced conversational prompts with high-signal CodeSpeak protocols. Consolidated tools to root directory.",
+        "impact": "Critical - Eliminated 404 version errors and established minimalist AI command structure."
+    },
+    {
+        "timestamp": "2026-02-24T05:25:00Z",
+        "event": "Brain API Hotfix",
+        "type": "FIX",
+        "description": "Fixed 'embedder' name import error in brain.py. Resolved Gemini 404 version errors in crystallizer/brain by standardizing on get_model() factory. Updated SYSTEM_CONTEXT to v3.5.6.",
+        "impact": "High - Restored semantic search and AI insight generation stability."
+    },
+    {
+        "timestamp": "2026-02-27T05:21:00Z",
+        "event": "Dependency Drift Fix & Reflection",
+        "type": "FIX",
+        "description": "Resolved ModuleNotFoundError for 'duckduckgo_search'. Identified 'Feature-Dependency Drift' where new tool logic was enabled without requirements.txt parity.",
+        "impact": "High - Restored server startup. Optimized requirements.txt sync protocol.",
+        "reflection": "When migrating tools (like web search) into the core chat loop, the dependency must be verified in the same commit. Relying on local pre-installed packages in a development environment is a blind spot."
+    },
+    {
+        "timestamp": "2026-02-27T05:20:00Z",
+        "event": "Knowledge & Memory Isolation",
+        "type": "ARCH",
+        "description": "Implemented physical isolation between 'memories' and 'documents' tables. Enabled Dual-Track RAG (Unified Awareness) and automated search archiving. Updated SYSTEM_CONTEXT to v3.7.7.",
+        "impact": "Critical - Established architectural purity and scalable knowledge management."
+    },
+    {
+        "timestamp": "2026-02-27T14:42:00Z",
+        "event": "Multimodal Ingest & Task Logic Upgrade",
+        "type": "EVOLUTION",
+        "description": "Implemented Phase P17: Enabled Gemini 2.0 Flash Vision/Multimodal for CaptureView and Chat. Successfully integrated support for images, PDFs, and Markdown extraction. Redesigned and implemented default 'todo' filtering for TaskList to resolve UI accumulation.",
+        "impact": "High - Unified multimodal data flow and restored task management clarity."
+    },
+    {
+        "timestamp": "2026-02-27T19:07:59Z",
+        "event": "Soul Sync",
+        "type": "SYNC",
+        "description": "Synced 2 files. Missed: [].",
+        "impact": "Low",
+        "meta": {
+            "drift_count": 1,
+            "drifted_files": [
+                ".cursorrules"
+            ],
+            "copied_count": 2,
+            "missed_count": 0,
+            "status": "drift_resolved"
+        }
+    },
+    {
+        "timestamp": "2026-02-27T19:48:22Z",
+        "event": "Soul Sync",
+        "type": "SYNC",
+        "description": "Synced 2 files. Missed: [].",
+        "impact": "Low",
+        "meta": {
+            "drift_count": 0,
+            "drifted_files": [],
+            "copied_count": 2,
+            "missed_count": 0,
+            "status": "in_sync"
+        }
+    },
+    {
+        "timestamp": "2026-03-03T23:35:32.362023+08:00",
+        "event": "AI Growth Analysis (v5.3)",
+        "type": "ai_lesson",
+        "description": "I must ensure that data categorization changes (such as reflection category) are applied atomically across both new inserts and updates within the same transaction. I should also build resilient fallback content chains (ai_insights -> content -> note) at every display layer, not just the storage layer, to prevent empty UI cards when schema fields are sparsely populated.",
+        "impact": "High - Improved schema consistency and display resiliency.",
+        "meta": {
+            "source": "run_growth_analysis",
+            "prediction_accuracy_pct": 0.0,
+            "judged_decisions": 9,
+            "mismatch_count": 9,
+            "note": "Lesson synthesized manually due to AI quota exhaustion at analysis time."
+        }
+    },
+    {
+        "timestamp": "2026-03-03T21:01:53Z",
+        "event": "Soul Sync",
+        "type": "SYNC",
+        "description": "Synced 2 files. Missed: [].",
+        "impact": "Low",
+        "meta": {
+            "drift_count": 0,
+            "drifted_files": [],
+            "copied_count": 2,
+            "missed_count": 0,
+            "status": "in_sync"
+        }
+    },
+    {
+        "timestamp": "2026-03-05T01:56:00+08:00",
+        "event": "Completed Phase F Guest Mode (Building in Public)",
+        "type": "SESSION",
+        "description": "Completed Phase F Guest Mode (Building in Public)",
+        "impact": "Logged by session_end.py"
+    },
+    {
+        "timestamp": "2026-03-05T03:59:29+08:00",
+        "event": "Resolved Windows Next.js IPv6 proxy hang and Owner Mode 500 errors by bypassing ",
+        "type": "SESSION",
+        "description": "Resolved Windows Next.js IPv6 proxy hang and Owner Mode 500 errors by bypassing dev proxy and explicitly fixing CORS headers.",
+        "impact": "Logged by session_end.py"
+    },
+    {
+        "timestamp": "2026-03-04T20:29:48Z",
+        "event": "Schema Drift Reflection",
+        "type": "architecture_insight",
+        "description": "Identified recurring silent PGRST204 errors caused by missing DB columns (e.g. updated_at, category). Proposed implementing a dynamic safe_insert DB wrapper to automatically strip invalid payload keys as a permanent fix rather than patching individual endpoints.",
+        "impact": "High",
+        "meta": {
+            "affected": [
+                "MonthlyReview",
+                "projects",
+                "tasks"
+            ],
+            "solution": "Implement safe_insert wrapper in database.py"
+        }
+    },
+    {
+        "timestamp": "2026-03-05T04:48:52+08:00",
+        "event": "Refactored raw Supabase inserts across the entire Cortex backend to use the resi",
+        "type": "SESSION",
+        "description": "Refactored raw Supabase inserts across the entire Cortex backend to use the resilient safe_write wrapper. Documented the schema drift defense mechanism in SYSTEM_CONTEXT.md and created an atomic history record.",
+        "impact": "Logged by session_end.py"
+    },
+    {
+        "timestamp": "2026-03-05T04:54:21+08:00",
+        "event": "Created the Universal AI Soul Bootstrapper Kit. Connected it to soul_manager.py ",
+        "type": "SESSION",
+        "description": "Created the Universal AI Soul Bootstrapper Kit. Connected it to soul_manager.py for Google Drive export.",
+        "impact": "Logged by session_end.py"
+    },
+    {
+        "timestamp": "2026-03-05T16:55:27Z",
+        "event": "Soul Sync",
+        "type": "SYNC",
+        "description": "Synced 3 files. Missed: ['.env.example'].",
+        "impact": "Low",
+        "meta": {
+            "drift_count": 2,
+            "drifted_files": [
+                ".cursorrules",
+                "bootstrapper_cursorrules"
+            ],
+            "copied_count": 3,
+            "missed_count": 1,
+            "status": "drift_resolved"
+        }
+    },
+    {
+        "timestamp": "2026-03-05T18:16:58.452488Z",
+        "event": "GenAI SDK Migration & Concurrency Fortification",
+        "type": "ARCH_FIX",
+        "description": "Resolved chain-reaction failures triggered by upgrading to google.genai v1beta: (1) Updated safe_generate_content to handle 503 UNAVAILABLE like 429 Quota Exhausted for dynamic failover. (2) Replaced hardcoded GenerateContentConfig objects with dicts to prevent wrapper merge crashes in crystallize and subconscious. (3) Re-mapped get_embeddings to gemini-embedding-001 as text-embedding-004 is removed in v1beta. (4) Fixed safe_write to inject ID correctly into .eq() for UPDATE operations, preventing missing WHERE clause crashes.",
+        "impact": "Critical - Restored AI background reflection, chat fallback chains, and semantic memory storage."
+    },
+    {
+        "timestamp": "2026-03-05T18:25:01.065465Z",
+        "event": "Architecture Purity Enforcement (Veto-001)",
+        "type": "GOVERNANCE",
+        "description": "User vetoed hardcoded fallback IDs in gemini.py/chat.py. Substituted with Architecture Purity Protocol: All model selection must remain dynamic via Quota Probe discovery. Failover logic enhanced to include 503 UNAVAILABLE in the absolute emergency guard to ensure registered models are fully exhausted before hard-failing.",
+        "impact": "High - Ensured long-term maintainability and compliance with SYSTEM_CONTEXT.md.",
+        "reflection": "I attempted a shortcut by hardcoding stable models to bypass 503 errors. The user correctly identified this as technical debt. The resilient fix is to allow the discovery service to identify stable models and ensure the failover logic triggers for both 429 and 503 errors."
+    }
+]

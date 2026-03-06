@@ -1,0 +1,30 @@
+# LifeOS AI Constraints & Best Practices
+
+## 🤖 Gemini Model Handling (CRITICAL - v3.9)
+- **Autonomous Discovery**: LifeOS uses `ModelDiscoveryService` to detect verified models.
+- **NEVER Hardcode**: Do not use IDs like `gemini-3.1-pro` directly in code.
+- **Standard Access**: ALWAYS use `app.core.gemini.get_model()` to fetch the current active/verified model ID.
+- **Reporting**: If you suspect a model is failing, refer the user to run `model_report.py`.
+
+## 🔍 Retrieval & RAG
+- **Embedding Model**: `text-embedding-004` (Dimension: 3072).
+- **Fallback Logic**: If vector search fails, `rag.py` triggers a keyword/date search. Support both.
+- **Hallucination Prevention**: If RAG context contains `[NO RELEVANT MEMORIES FOUND]`, ADMIT ignorance. Do not simulate memories.
+
+## 🛠️ Python Style (Windows Stability)
+- **NO Emojis in Prints**: Use labels like `[OK]`, `[WARN]`, `[ERROR]`. Emojis crash Windows shells with certain encodings.
+- **Strict Typing**: Use Pydantic v2 and type hints everywhere.
+- **Async First**: Use `async/await` for all I/O, including database and AI calls.
+
+## 🎨 UI & Frontend
+- **Vanilla CSS**: NO Tailwind CSS unless explicitly requested.
+- **LocalStorage**: Be careful with cached model names. Use the `CHECK_AND_CLEAN_MODELS` logic in `CortexChat.tsx`.
+
+## 🗄️ Database & Schema (CRITICAL)
+- **Resilient Database Wrapper (MANDATORY)**: Future AI agents MUST NEVER use raw `db.table().insert()`, `update()`, or `upsert()` calls directly. You MUST ALWAYS import `safe_write` from `app.core.database` and use it instead. Example: `safe_write(db.table("memories"), data, operation_type="insert")`.
+- **Schema Drift Protection**: The remote Postgres database may not always have the columns you assume it does (e.g., missing `updated_at`). `safe_write` automatically handles `PGRST204` errors and strips invalid keys. By strictly using `safe_write`, we prevent silent background task crashes.
+
+## 🧠 Agentic Protocol (Onboarding - START HERE)
+- **Source of Truth**: Read `sync_brain/task.md` and `sync_brain/SKILLS.md` immediately upon start.
+- **Step Visibility**: Update `sync_brain/task.md` frequently. Every non-trivial task must result in a completion record in `sync_brain/history/[Date]_Task_Name.md`.
+- **System Wisdom**: `sync_brain/SYSTEM_CONTEXT.md` contains the core philosophy. Adhere to it.
