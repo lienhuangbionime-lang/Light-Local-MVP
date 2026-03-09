@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
             "Extract the line items from this receipt or invoice. Return ONLY a valid JSON array where each object has 'name' (string, the product name), 'foreignPrice' (number, the unit cost found), and 'quantity' (number). Do not include any markdown formatting, just the raw JSON."
 
         // 使用目前文件推薦的 gemini-2.5-flash 並加強錯誤紀錄
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${apiKey}`
 
         const response = await fetch(url, {
             method: "POST",
