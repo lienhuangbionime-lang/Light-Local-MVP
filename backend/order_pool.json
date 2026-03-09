@@ -11,7 +11,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_F10BD84B": {
     "order_id": "ORD_F10BD84B",
@@ -25,7 +26,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_C6921A0F": {
     "order_id": "ORD_C6921A0F",
@@ -39,7 +41,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_AB86BF65": {
     "order_id": "ORD_AB86BF65",
@@ -53,7 +56,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_7907A572": {
     "order_id": "ORD_7907A572",
@@ -67,7 +71,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_5971B786": {
     "order_id": "ORD_5971B786",
@@ -79,9 +84,10 @@
         "quantity": 3
       }
     ],
-    "status": "PENDING",
-    "shipping_info": null,
-    "phone": null
+    "status": "CONFIRMED",
+    "shipping_info": "163512 六工門市",
+    "phone": "0911454707",
+    "buyer_name": "Lily"
   },
   "ORD_B68B3D53": {
     "order_id": "ORD_B68B3D53",
@@ -95,7 +101,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_728DAAD5": {
     "order_id": "ORD_728DAAD5",
@@ -109,7 +116,8 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   },
   "ORD_8DE6D023": {
     "order_id": "ORD_8DE6D023",
@@ -123,6 +131,7 @@
     ],
     "status": "PENDING",
     "shipping_info": null,
-    "phone": null
+    "phone": null,
+    "buyer_name": null
   }
 }

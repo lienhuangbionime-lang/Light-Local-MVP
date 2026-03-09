@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export function SettingsPage() {
-  const { batches, items, shipments, sales, clearData, mergeData, geminiApiKey, setGeminiApiKey } = useAppStore()
+  const { batches, items, shipments, sales, clearData, mergeData, geminiApiKey, setGeminiApiKey, backendUrl, setBackendUrl } = useAppStore()
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -142,16 +142,16 @@ export function SettingsPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Key className="h-4 w-4" />
-            AI 辨識設定
+            AI 辨識與直播設定
           </CardTitle>
           <CardDescription>
-            輸入您的 Gemini API Key 來啟用智能單據辨識功能
+            配置您的 Gemini API 與 EchoOrder 緩衝閘道
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div>
             <Label htmlFor="apiKey" className="text-muted-foreground text-xs">
-              Gemini API Key (此金鑰僅存放於您的手機本機)
+              Gemini API Key (用於單據辨識)
             </Label>
             <Input
               id="apiKey"
@@ -159,6 +159,19 @@ export function SettingsPage() {
               placeholder="AIzaSy..."
               value={geminiApiKey}
               onChange={(e) => setGeminiApiKey(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label htmlFor="backendUrl" className="text-muted-foreground text-xs">
+              EchoOrder 緩衝閘道 URL (Render.com)
+            </Label>
+            <Input
+              id="backendUrl"
+              type="text"
+              placeholder="https://your-app.onrender.com"
+              value={backendUrl}
+              onChange={(e) => setBackendUrl(e.target.value)}
               className="mt-1"
             />
           </div>
@@ -257,7 +270,7 @@ export function SettingsPage() {
             隱私說明
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>
             本系統採用 Local-First 架構，您的所有資料皆儲存於手機瀏覽器的本地空間中。
           </p>
@@ -278,10 +291,13 @@ export function SettingsPage() {
             清空所有資料後將無法復原，請先匯出備份
           </CardDescription>
         </CardHeader>
-        <CardContent>
+          <CardContent>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" className="w-full">
+              <Button
+                variant="outline"
+                className="w-full border-destructive text-destructive hover:bg-destructive/5"
+              >
                 <Trash2 className="h-4 w-4 mr-2" />
                 清空所有本地資料
               </Button>
@@ -298,7 +314,7 @@ export function SettingsPage() {
                 <AlertDialogCancel>取消</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleClearAll}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="border border-destructive text-destructive bg-background hover:bg-destructive/10"
                 >
                   確定清空
                 </AlertDialogAction>

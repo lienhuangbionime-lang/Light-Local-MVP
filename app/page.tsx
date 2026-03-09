@@ -10,6 +10,7 @@ import { ShipmentsPage } from "@/components/pages/shipments"
 import { InventoryPage } from "@/components/pages/inventory"
 import { SalesPage } from "@/components/pages/sales"
 import { SettingsPage } from "@/components/pages/settings"
+import { LivePage } from "@/components/pages/live"
 import { Toaster } from "@/components/ui/toaster"
 
 function AppContent() {
@@ -25,6 +26,7 @@ function AppContent() {
         {activeTab === "digitize" && <DigitizePage />}
         {activeTab === "inventory" && <InventoryPage />}
         {activeTab === "sales" && <SalesPage />}
+        {activeTab === "live" && <LivePage />}
         {activeTab === "settings" && <SettingsPage />}
       </main>
 

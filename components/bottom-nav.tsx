@@ -3,7 +3,7 @@
 import { LayoutDashboard, Camera, Package, ShoppingCart, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type TabId = "dashboard" | "digitize" | "inventory" | "sales" | "settings"
+export type TabId = "dashboard" | "digitize" | "inventory" | "sales" | "live" | "settings" | "batch" | "shipments"
 
 interface BottomNavProps {
   activeTab: TabId
@@ -13,6 +13,7 @@ interface BottomNavProps {
 const tabs: { id: TabId; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "總覽", icon: LayoutDashboard },
   { id: "digitize", label: "進貨", icon: Camera },
+  { id: "live", label: "直播", icon: ShoppingCart },
   { id: "inventory", label: "庫存", icon: Package },
   { id: "sales", label: "銷售", icon: ShoppingCart },
   { id: "settings", label: "設定", icon: Settings },

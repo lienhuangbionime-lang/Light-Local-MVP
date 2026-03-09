@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
-export type AppTab = "dashboard" | "batch" | "digitize" | "shipments" | "inventory" | "sales" | "settings";
+export type AppTab = "dashboard" | "batch" | "digitize" | "shipments" | "inventory" | "sales" | "live" | "settings";
 
 export interface Batch {
   id: string;
@@ -36,11 +36,14 @@ export interface Sale {
   id: string;
   itemId: string;
   itemName: string;
+  buyerName?: string; // 加入買家姓名
   quantity: number;
   unitPrice: number; // 售出單價
   totalRevenue: number;
   profit: number; // (unitPrice - localCostLanded) * quantity
   batchId?: string; // The batch this sale is attributed to (optional during creation)
+  source?: "live" | "manual" | "import"; // 銷售來源
+  liveSessionId?: string; // 若為直播來源，可標記場次 ID
   createdAt: string;
 }
 
@@ -55,6 +58,8 @@ interface AppState {
   shipments: Shipment[];
   sales: Sale[];
   geminiApiKey: string;
+  backendUrl: string;
+  currentLiveSessionId: string | null;
 
   // Domain Actions
   addBatch: (batch: Omit<Batch, "id" | "createdAt" | "status"> & { id?: string }) => void;
@@ -66,6 +71,15 @@ interface AppState {
   addShipment: (shipment: Pick<Shipment, "batchId" | "totalCostTWD" | "amortizationMethod">) => void;
   addSale: (sale: Omit<Sale, "id" | "createdAt" | "profit" | "totalRevenue">) => void;
   setGeminiApiKey: (key: string) => void;
+  setBackendUrl: (url: string) => void;
+  startNewLiveSession: () => void;
+
+  // Live Logistics Actions
+  harvestLiveOrders: (
+    confirmedOrders: any[],
+    codeToProductIdMap: Record<string, string>,
+    codeToPriceRulesMap: Record<string, string>
+  ) => void;
 
   // Global Actions
   clearData: () => void;
@@ -108,6 +122,8 @@ export const useAppStore = create<AppState>()(
       shipments: [],
       sales: [],
       geminiApiKey: "",
+      backendUrl: "https://echoorder-buffer.onrender.com",
+      currentLiveSessionId: null,
 
       addBatch: (batchData) => set((state) => ({
         batches: [...state.batches, {
@@ -139,6 +155,12 @@ export const useAppStore = create<AppState>()(
       }),
 
       setGeminiApiKey: (key: string) => set({ geminiApiKey: key }),
+      setBackendUrl: (url: string) => set({ backendUrl: url }),
+
+      startNewLiveSession: () =>
+        set(() => ({
+          currentLiveSessionId: `live-${new Date().toISOString()}`,
+        })),
 
       updateItemQuantity: (id, quantityDelta) => set((state) => ({
         items: state.items.map(item =>
@@ -231,6 +253,8 @@ export const useAppStore = create<AppState>()(
             totalRevenue: revenueFromThisItem,
             profit: profitFromThisItem,
             batchId: item.batchId,
+            source: saleData.source ?? "manual",
+            liveSessionId: saleData.liveSessionId,
             createdAt: new Date().toISOString()
           });
 
@@ -249,6 +273,70 @@ export const useAppStore = create<AppState>()(
         return {
           sales: [...state.sales, ...newSales],
           items: updatedItems
+        };
+      }),
+
+      harvestLiveOrders: (confirmedOrders: any[], codeToProductIdMap: Record<string, string>, codeToPriceRulesMap: Record<string, string>) => set((state) => {
+        let updatedItems = [...state.items];
+        const newSales: Sale[] = [];
+        const sessionId = state.currentLiveSessionId ?? `live-${new Date().toISOString()}`;
+
+        for (const order of confirmedOrders) {
+          for (const item of order.items) {
+            const productId = codeToProductIdMap[item.product_code];
+            if (!productId) continue;
+
+            const priceRule = codeToPriceRulesMap[item.product_code] || "0";
+            let unitPrice = 0;
+
+            if (!priceRule.includes(":")) {
+              // 1. 普通定價 (單一數字)
+              unitPrice = Number(priceRule);
+            } else {
+              // 2. 階梯定價 (如 "1:190, 2:175, 5:150")
+              // 解析規則
+              const rules = priceRule.split(",").map(r => {
+                const [q, p] = r.split(":").map(s => Number(s.trim()));
+                return { q, p };
+              }).sort((a, b) => b.q - a.q); // 從大排到小
+
+              // 尋找符合的最大數量門檻
+              const match = rules.find(r => item.quantity >= r.q);
+              unitPrice = match ? match.p : (rules[rules.length - 1]?.p || 0);
+            }
+
+            // Find the item in local store
+            const localItemIndex = updatedItems.findIndex(i => i.id === productId);
+            if (localItemIndex === -1) continue;
+
+            const localItem = updatedItems[localItemIndex];
+            const sellQty = item.quantity;
+
+            newSales.push({
+              id: crypto.randomUUID(),
+              itemId: localItem.id,
+              itemName: localItem.name,
+              buyerName: order.buyer_name || order.fb_user_name,
+              quantity: sellQty,
+              unitPrice: unitPrice,
+              totalRevenue: unitPrice * sellQty,
+              profit: (unitPrice - localItem.localCostLanded) * sellQty,
+              batchId: localItem.batchId,
+              source: "live",
+              liveSessionId: sessionId,
+              createdAt: new Date().toISOString()
+            });
+
+            updatedItems[localItemIndex] = {
+              ...localItem,
+              quantity: localItem.quantity - sellQty
+            };
+          }
+        }
+
+        return {
+          items: updatedItems,
+          sales: [...state.sales, ...newSales]
         };
       }),
 
@@ -278,7 +366,9 @@ export const useAppStore = create<AppState>()(
         items: state.items,
         shipments: state.shipments,
         sales: state.sales,
-        geminiApiKey: state.geminiApiKey
+        geminiApiKey: state.geminiApiKey,
+        backendUrl: state.backendUrl,
+        currentLiveSessionId: state.currentLiveSessionId,
       })
     }
   )

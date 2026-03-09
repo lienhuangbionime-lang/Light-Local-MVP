@@ -2,7 +2,9 @@ import httpx
 import asyncio
 import json
 
-BASE_URL = "http://127.0.0.1:10000"
+# 本機開發時，請確保與 uvicorn 啟動埠一致
+# 目前後端日誌顯示為 http://127.0.0.1:8000
+BASE_URL = "http://127.0.0.1:8000"
 
 async def simulate_comment(user_name, comment_text):
     payload = {

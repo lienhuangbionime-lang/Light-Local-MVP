@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ShoppingCart, Check, TrendingUp, History } from "lucide-react"
+import { ShoppingCart, Check, TrendingUp, History, Radio } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export function SalesPage() {
@@ -23,6 +23,7 @@ export function SalesPage() {
   const [selectedItemName, setSelectedItemName] = useState("")
   const [quantity, setQuantity] = useState("1")
   const [unitPrice, setUnitPrice] = useState("")
+  const [sourceFilter, setSourceFilter] = useState<"all" | "live" | "manual">("all")
 
   // Group items by name for selection
   const groupedProducts = items.reduce((acc, item) => {
@@ -93,6 +94,7 @@ export function SalesPage() {
       itemName: selectedItemName,
       quantity: qty,
       unitPrice: price,
+      source: "manual",
     })
 
     toast({
@@ -106,12 +108,19 @@ export function SalesPage() {
     setUnitPrice("")
   }
 
+  const filteredSales =
+    sourceFilter === "all"
+      ? sales
+      : sales.filter((s) => (sourceFilter === "live" ? s.source === "live" : s.source !== "live"))
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <header className="pt-2">
         <h1 className="text-2xl font-bold text-foreground">銷售記帳</h1>
-        <p className="text-sm text-muted-foreground">記錄每筆銷售，自動依先進先出扣帳</p>
+        <p className="text-sm text-muted-foreground">
+          記錄每筆銷售（含直播收割），自動依先進先出扣帳
+        </p>
       </header>
 
       {/* Sale Form */}
@@ -251,24 +260,60 @@ export function SalesPage() {
             <History className="h-4 w-4" />
             近期銷售紀錄
           </CardTitle>
+          <div className="flex gap-2 mt-2">
+            <Button
+              size="sm"
+              variant={sourceFilter === "all" ? "default" : "outline"}
+              className="h-7 px-3 text-xs"
+              onClick={() => setSourceFilter("all")}
+            >
+              全部
+            </Button>
+            <Button
+              size="sm"
+              variant={sourceFilter === "live" ? "default" : "outline"}
+              className="h-7 px-3 text-xs"
+              onClick={() => setSourceFilter("live")}
+            >
+              <Radio className="h-3 w-3 mr-1" />
+              直播
+            </Button>
+            <Button
+              size="sm"
+              variant={sourceFilter === "manual" ? "default" : "outline"}
+              className="h-7 px-3 text-xs"
+              onClick={() => setSourceFilter("manual")}
+            >
+              一般銷售
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          {sales.length === 0 ? (
+          {filteredSales.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               尚無銷售紀錄
             </p>
           ) : (
             <div className="space-y-2">
-              {sales.slice(-5).reverse().map((sale) => (
+              {filteredSales.slice(-5).reverse().map((sale) => (
                 <div
                   key={sale.id}
                   className="flex items-center justify-between py-3 border-b border-border last:border-0"
                 >
                   <div>
                     <p className="font-medium text-sm">{sale.itemName}</p>
+                    {sale.buyerName && (
+                      <p className="text-[10px] text-muted-foreground italic">買家: {sale.buyerName}</p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {sale.quantity} 件 x ${sale.unitPrice}
                     </p>
+                    {sale.source && (
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        來源：{sale.source === "live" ? "直播收割" : "一般銷售"}
+                        {sale.liveSessionId && `｜場次 ${sale.liveSessionId}`}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="font-semibold">${Math.round(sale.totalRevenue).toLocaleString()}</p>
