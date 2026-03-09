@@ -1,0 +1,12 @@
+# Python 虛擬環境
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 環境變數 (絕對不要進 Git)
+.env
+.env.local
+
+# uv 相關
+.uv
