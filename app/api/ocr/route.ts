@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
             })
         }
 
+        
         const prompt =
             "Extract the line items from this receipt or invoice. Return ONLY a valid JSON array where each object has 'name' (string, the product name), 'foreignPrice' (number, the unit cost found), and 'quantity' (number). Do not include any markdown formatting, just the raw JSON."
 
