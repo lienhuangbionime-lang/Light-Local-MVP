@@ -8,7 +8,6 @@ from backend.database.firebase import db
 from backend.services.ai_service import get_gemini_embedding
 import backend.config as config
 import httpx
-from bs4 import BeautifulSoup
 
 # ─────────────────────────────────────────
 # 記憶體門市索引 (啟動時載入，查詢 O(1))
