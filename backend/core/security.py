@@ -21,6 +21,18 @@ def verify_admin_signature(signature: str, timestamp: str) -> bool:
     except Exception:
         return False
 
+def verify_admin(signature: str, timestamp: str) -> bool:
+    """別名，與 main.py 導入名稱一致"""
+    return verify_admin_signature(signature, timestamp)
+
+def generate_admin_signature(timestamp: str) -> str:
+    """生成 Admin 簽名 (通常用於後端測試或特定流程)"""
+    return hmac.new(
+        ADMIN_SECRET.encode(),
+        f"admin:{timestamp}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+
 def generate_order_signature(order_id: str) -> str:
     """為結帳連結生成專屬簽名，防止單號竄改"""
     return hmac.new(
