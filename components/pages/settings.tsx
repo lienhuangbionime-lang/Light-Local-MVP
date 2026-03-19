@@ -1,7 +1,5 @@
 "use client"
 
-"use client"
-
 import { useState, useRef } from "react"
 import { useAppStore, DEFAULT_BACKEND_URL } from "@/lib/store"
 import { generateAdminSignature } from "@/lib/crypto"

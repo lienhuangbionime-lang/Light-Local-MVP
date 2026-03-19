@@ -1,5 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranslation } from "@/lib/i18n"
+import { useAppStore, calculateMonthlyStats, getLowStockItems } from "@/lib/store"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { TrendingUp, DollarSign, Package, Layers, AlertTriangle } from "lucide-react"
 
 export function DashboardPage() {
   const { sales, items, batches } = useAppStore()
