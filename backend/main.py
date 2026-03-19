@@ -221,8 +221,9 @@ async def clear_orders_endpoint(request: Request, force: bool = False):
     
     # 1. 清理本地 Cache
     if pending_only:
-        # 僅刪除 PENDING
-        to_delete = [oid for oid, o in config.ORDER_POOL.items() if o.status == "PENDING"]
+        # [REFINEMENT] 既然是要清空活躍區，則 ORDER_POOL 中所有「未搬移到 archived_orders」的訂單都該清除
+        # 避免剛填完單但還沒導出的單子殘留在記憶體中，導致透過「自我修復」又被寫回雲端
+        to_delete = [oid for oid, o in config.ORDER_POOL.items() if o.status != "HARVESTED"]
         for oid in to_delete:
             del config.ORDER_POOL[oid]
         # PROCESSED_COMMENT_IDS 不清理，避免重覆進單 (除非全清)

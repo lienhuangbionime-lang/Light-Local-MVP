@@ -222,9 +222,10 @@ export default function CheckoutPage() {
   }
 
   if (isSuccess) {
-    const itemCount = order?.items?.reduce((sum: number, i: any) => sum + i.quantity, 0) || 0
     const subtotal = order?.items?.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0) || 0
-    const shippingFee = (itemCount >= (order?.free_shipping_threshold ?? 999)) ? 0 : (order?.shipping_fee ?? 0)
+    // [LOGISTICS] 依照賣家要求，結帳頁面不預扣免運。
+    // 免運統計將在「導出 Excel」時根據跨場次累計件數自動計算。
+    const shippingFee = order?.shipping_fee ?? 38
     const totalAmount = subtotal + shippingFee
 
     return (
@@ -271,7 +272,7 @@ export default function CheckoutPage() {
               {/* [SHIPPING HIDE] 依賣家要求，對外隱藏費用拆分細節 */}
               <div className="flex justify-between font-bold text-sm pt-1 border-t-2 border-double border-primary/20">
                 <span>應付總額</span>
-                <span className="text-primary">NT$ {subtotal}</span>
+                <span className="text-primary">NT$ {totalAmount}</span>
               </div>
             </div>
           </CardContent>
@@ -292,9 +293,8 @@ export default function CheckoutPage() {
     )
   }
 
-  const itemCount = order?.items?.reduce((sum: number, i: any) => sum + i.quantity, 0) || 0
   const subtotal = order?.items?.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0) || 0
-  const shippingFee = (itemCount >= (order?.free_shipping_threshold ?? 999)) ? 0 : (order?.shipping_fee ?? 0)
+  const shippingFee = order?.shipping_fee ?? 38
   const totalAmount = subtotal + shippingFee
 
   return (
@@ -340,7 +340,7 @@ export default function CheckoutPage() {
             <div className="flex justify-between font-bold text-lg pt-2 border-t-2 border-double mt-2">
               <span>應付總額</span>
               <span className="text-primary">
-                NT$ {subtotal}
+                NT$ {totalAmount}
               </span>
             </div>
           </div>

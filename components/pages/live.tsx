@@ -317,22 +317,35 @@ export function LivePage() {
     }
 
     const handleEndLiveSession = async () => {
-        const cleanUrl = getCleanUrl(backendUrl)
+        // [RACE FIX] 先停用直播狀態，防止 5 秒一輪的 fetchAll 觸發「自我修復」把剛刪掉的單救回來
+        setIsLiveActive(false)
+        setOrderMirror([])
+        setLiveStats({})
+        
         try {
-            // Try to notify backend but don't let it block local state update if it fails
-            const ts = Math.floor(Date.now() / 1000).toString();
-            const sig = await generateAdminSignature(adminSecret, ts);
-            await fetch(`${cleanUrl}/api/seller/orders`, { 
+            const adminSecret = useAppStore.getState().adminSecret
+            const timestamp = Date.now().toString()
+            const signature = btoa(`admin:${timestamp}:${adminSecret}`)
+            
+            const cleanUrl = backendUrl.replace(/\/$/, "")
+            
+            // 1. 通知後端清空 (不帶 force 則只清 PENDING，但後端 main.py 會被我改得更乾淨)
+            await fetch(`${cleanUrl}/api/seller/orders`, {
                 method: "DELETE",
                 headers: {
-                    "X-Admin-Signature": sig,
-                    "X-Admin-Timestamp": ts
+                    "X-Admin-Signature": signature,
+                    "X-Admin-Timestamp": timestamp
                 }
-            }).catch(e => console.warn("Orders clear failed", e))
+            })
             
+            // 2. 標記直播結束
             await fetch(`${cleanUrl}/api/seller/live/status`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Admin-Signature": signature,
+                    "X-Admin-Timestamp": timestamp
+                },
                 body: JSON.stringify({ is_live_active: false })
             }).catch(e => console.warn("Live status sync failed", e))
 

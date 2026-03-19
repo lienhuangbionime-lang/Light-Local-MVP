@@ -29,8 +29,12 @@
 - **M3 單據辨識 (Digitize)**: 拍照上傳單據 -> API -> Gemini -> 辨識出 [品項, 外幣單價] -> 丟棄圖片實體 -> 套用 M2 匯率計算台幣初估成本 -> 存入 LocalStorage。
 - **M4 物流攤提 (Shipments)**: 國際運費攤提。支援「按件數均攤」或「按重量比例攤提」(服飾業特性：飾品輕/大衣重)。算出精準「最終單位成本 (Landed Cost)」。
 - **M5 庫存管理 (Inventory)**: 查詢、編輯商品庫存量與成本。
-- **M6 銷售記帳 (Sales)**: 記錄銷售單，扣除庫存，計算單筆毛利。
-- **M7 設定與備份 (Settings)**: 匯出 JSON / 一鍵清空資料。
+- **M6 銷售與歸檔 (Sales & Archiving)**: 
+  - **分段存儲**: 活躍連結存於 `/orders` (Staging)，買家確認後立刻移入 `/archived_orders` (Result)。
+  - **累計併單**: 封存區支援跨場次長期累積，Excel 匯出時才執行全量對帳。
+- **M7 設定與導出 (Export & Settings)**: 
+  - **三員合一**: 併單規則為 (電話 + 門市 + 姓名) 完全相符。
+  - **巨集防護**: 使用 `openpyxl` 確保 `.xlsm` 模板功能與 7-11 匯入巨集不受損。
 
 ## 🚦 開發原則與限制
 - **純本地儲存**: 絕對禁止引入 Supabase, Prisma 或其他伺服器資料庫。所有業務資料限於 `LocalStorage`。
@@ -49,4 +53,4 @@
 3. **路徑修正**: 雲端部署 (Render) 若發生 `ModuleNotFoundError`，必須在 `main.py` 第 1 行注入 `sys.path` 修正。
 
 ---
-**Last Updated**: 2026-03-18 | **Status**: Phase 3 AI Optimized (Gemma/Gemini Tiered Routing Deployed)
+**Last Updated**: 2026-03-20 | **Status**: Phase 5 Advanced Order Life-cycle Deployed (Archive-Split + Triplet Merge)

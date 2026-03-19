@@ -1,5 +1,40 @@
 [
     {
+        "timestamp": "2026-03-20T04:25:00Z",
+        "event": "Session Cleanup & Race Condition Fix",
+        "type": "FIX",
+        "description": "Resolved 'Self-Healing' race condition where background polling would re-upload deleted orders. Implemented immediate status cut-off and thorough memory purging in backend.",
+        "impact": "High - Guaranteed clean state after session end."
+    },
+    {
+        "timestamp": "2026-03-20T04:26:00Z",
+        "event": "Checkout Amount Normalization (Buyer-Side)",
+        "type": "UI",
+        "description": "Removed premature free shipping from checkout links. Standardized Top/Bottom amounts to include shipping, matching seller's multi-session accumulation strategy.",
+        "impact": "High - Eliminated buyer confusion regarding shipping fees."
+    },
+    {
+        "timestamp": "2026-03-20T04:12:00Z",
+        "event": "Advanced Order Life-cycle & Archiving",
+        "type": "ARCH",
+        "description": "Implemented 'Split Collection' architecture. Pending orders reside in /orders, while Confirmed orders move instantly to /archived_orders. Optimized session-end cleanup to spare confirmed data.",
+        "impact": "Critical - Established reliable post-live data management and multi-session scalability."
+    },
+    {
+        "timestamp": "2026-03-20T04:15:00Z",
+        "event": "Triplet-Match Merging Logic",
+        "type": "LOGIC",
+        "description": "Enforced strict order merging for free shipping: (Phone + 7-11 Store + Name) must be identical. Enabled multi-session accumulation in Excel export.",
+        "impact": "High - Precision logistical merging and intelligent fee calculation."
+    },
+    {
+        "timestamp": "2026-03-20T04:18:00Z",
+        "event": "Macro-Safe Excel Export (openpyxl)",
+        "type": "ENGINE",
+        "description": "Refactored Excel producer to use openpyxl. Preserves .xlsm template structure and macros by writing data from Row 7 onwards.",
+        "impact": "High - Restored compatibility with 7-11 batch import macro files."
+    },
+    {
         "timestamp": "2026-02-14T01:55:00Z",
         "event": "Protocol Alignment",
         "type": "ARCH",
@@ -235,9 +270,9 @@
         "timestamp": "2026-03-12T04:46:00+08:00",
         "event": "3-Day Sprint Review & Solution Roadmap",
         "type": "SYNC",
-        "description": "?´å? 2026-03-09 ~ 2026-03-11 ä¸æ¥?ç¼ï¼åº«å­å?ä½?FIFO+å¤ä»£???é²?°å?æ­¥å??¸ãèª?ç³»çµ±ãè??®é¡?æ¢å¾©ãAuto-Harvest?Meta API v25.0 ?ç??æ ¸å¿å?é¡ï??¬å°?é²ç«¯ç??ä?ä¸?´ãå?çº?P1ï¼å?å¾æ°¸ä¹?FB Token + ?²é?å­å?æ¬ãP2ï¼Harvest ??Zustand M5 + Store çµæ?è¨­è???,
+        "description": "記錄 2026-03-09 ~ 2026-03-11 三日開發：庫存對位 (FIFO+多店)、雲端同步優化、自訂系統標籤還原、Auto-Harvest 及 Meta API v25.0 升級為核心，解決本地與雲端同步不一致問題。",
         "impact": "High - Established transparency and roadmap alignment across 3-day sprint.",
-        "reflection": "?²å°?æ­¥ï¼sync_productsï¼æ¯?´åç³»çµ±æ??å¼±?ç°ç¯?åªè¦æ¬?°è¨­å®æ??æ??æ¨?ï???é²ç«¯é?è¼¯é½?¯ç²?ãæªä¾æ??æ®??Auto-Harvest æµç?? å¥?å?æ­¥ç¢ºèªãç??²è­·æ­¥é???
+        "reflection": "本地同步 (sync_products) 是整個系統最脆弱的環節，只要本地設定與雲端不一致，所有運作都會出錯。未來應考慮將 Auto-Harvest 流程納入同步確認，以保護穩定性。"
     },
     {
         "timestamp": "2026-03-17T02:30:00+08:00",
@@ -252,7 +287,9 @@
         "event": "AI Model Intelligence Upgrade & Tiered Routing Strategy",
         "type": "EVOLUTION",
         "description": "Integrated knowledge of Gemma 3 27B (Receptionist - 14.4k RPD) and Gemini 3.1 Pro (Executive - 500 RPD). Implemented tiered routing strategy: Gemma handles routine Q&A/triage to preserve Gemini's limits for complex multimodal tasks. Recorded in sync_brain/KNOWLEDGE_AI_MODELS.md.",
-        "impact": "High - Optimized API cost-efficiency and established redundant automation for high-volume live streams."    },{
+        "impact": "High - Optimized API cost-efficiency and established redundant automation for high-volume live streams."
+    },
+    {
         "timestamp": "2026-03-18T03:17:11+08:00",
         "event": "UI-First Verification Protocol",
         "type": "PROTOCOL",
