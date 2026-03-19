@@ -8,10 +8,10 @@
     },
     {
         "timestamp": "2026-03-20T04:26:00Z",
-        "event": "Checkout Amount Normalization (Buyer-Side)",
+        "event": "Checkout Amount Normalization (Zero Shipping Policy)",
         "type": "UI",
-        "description": "Removed premature free shipping from checkout links. Standardized Top/Bottom amounts to include shipping, matching seller's multi-session accumulation strategy.",
-        "impact": "High - Eliminated buyer confusion regarding shipping fees."
+        "description": "Removed all shipping fee calculations from the buyer's checkout view. Standardized Top/Bottom amounts to reflect only the item subtotal (e.g., 245 = 245).",
+        "impact": "High - Aligned checkout experience with seller's internal logistics strategy."
     },
     {
         "timestamp": "2026-03-20T04:12:00Z",

@@ -223,10 +223,10 @@ export default function CheckoutPage() {
 
   if (isSuccess) {
     const subtotal = order?.items?.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0) || 0
-    // [LOGISTICS] 依照賣家要求，結帳頁面不預扣免運。
-    // 免運統計將在「導出 Excel」時根據跨場次累計件數自動計算。
-    const shippingFee = order?.shipping_fee ?? 38
-    const totalAmount = subtotal + shippingFee
+    // [LOGISTICS] 依照賣家要求，結帳頁面不含運費，亦不計算免運。
+    // 運費將在「導出 Excel」至 7-11 系統時才統一加上。
+    const shippingFee = 0
+    const totalAmount = subtotal
 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background text-center">
@@ -294,8 +294,8 @@ export default function CheckoutPage() {
   }
 
   const subtotal = order?.items?.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0) || 0
-  const shippingFee = order?.shipping_fee ?? 38
-  const totalAmount = subtotal + shippingFee
+  const shippingFee = 0
+  const totalAmount = subtotal
 
   return (
     <div className="max-w-lg mx-auto min-h-screen p-4 py-8 space-y-6">
