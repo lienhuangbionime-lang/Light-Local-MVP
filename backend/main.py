@@ -12,7 +12,7 @@ if current_dir not in sys.path:
 
 print(f"[SYSTEM] Path Fix: current={current_dir}, parent={parent_dir}")
 
-from fastapi import FastAPI, UploadFile, File, Form, Header, BackgroundTasks, HTTPException, Response
+from fastapi import FastAPI, UploadFile, File, Form, Header, BackgroundTasks, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import time
@@ -40,20 +40,22 @@ from backend.services.fb_service import (
     process_webhook_data, send_messenger_link, subscribe_page_to_app, save_fb_config, load_fb_config
 )
 from backend.services.order_service import process_order, handle_admin_secretarial_work
+from backend.database.firebase import init_firebase
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """管理全域資源生命週期"""
     print(f"[SYSTEM] 啟動背景同步任務... (Instance: {INSTANCE_ID})")
-    # [CRITICAL] Await loading to ensure memory is populated before requests arrive
     try:
+        init_firebase()
         await asyncio.gather(load_orders(), load_events())
         if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
             from backend.services.fb_service import subscribe_page_to_app
-            await subscribe_page_to_app(config.PAGE_ACCESS_TOKEN)
+            # Use wait_for to prevent FB hanging during server boot
+            await asyncio.wait_for(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN), timeout=10.0)
         print("[SYSTEM] 初始化完成")
     except Exception as e:
-        print(f"[ERROR] 初始化失敗: {e}")
+        print(f"[ERROR] 初始化失敗或逾時: {e}")
     yield
     print("[SYSTEM] 正在關閉全域連線...")
     await global_client.aclose()
