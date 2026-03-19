@@ -23,10 +23,16 @@ def save_fb_config(fb_config):
 
 async def send_messenger_link(fb_user_id: str, order_id: str, items: List[OrderItem], comment_id: Optional[str] = None, token: Optional[str] = None, base_url: str = "", text: Optional[str] = None):
     """發送 Messenger 私訊連結 (支援動態後端溯源)"""
-    checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}"
+    # 優先使用 Vercel，若無則回退預設
+    frontend_url = os.getenv("VERCEL_URL", "light-local-mvp.vercel.app")
+    if not frontend_url.startswith("http"):
+        frontend_url = f"https://{frontend_url}"
+        
+    checkout_url = f"{frontend_url}/checkout/{order_id}"
+    
     if base_url:
         signature = generate_order_signature(order_id)
-        checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?backend={base_url}&s={signature}"
+        checkout_url = f"{frontend_url}/checkout/{order_id}?backend={base_url}&s={signature}"
     
     item_summary = ", ".join([f"{i.product_code} x{i.quantity}" for i in items])
     

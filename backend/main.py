@@ -100,9 +100,11 @@ async def health_check():
     from backend.database.firebase import db
     return {
         "status": "ok",
-        "version": "2.2.0 (Stable Path)",
+        "version": "2.2.1 (Stability & Link Fix)",
         "instance_id": INSTANCE_ID,
         "is_live": config.IS_LIVE_ACTIVE,
+        "has_fb_token": bool(config.PAGE_ACCESS_TOKEN and config.PAGE_ACCESS_TOKEN != "YOUR_FB_PAGE_TOKEN"),
+        "has_ai_key": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
         "env": {
             "PORT": os.environ.get("PORT"),
             "RENDER": bool(os.environ.get("RENDER")),

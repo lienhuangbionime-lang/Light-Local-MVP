@@ -8,5 +8,11 @@
 
 ## 🔜 Next Steps
 - [ ] **Environment Setup**: Run `npm install` for Next.js consistency.
-- [ ] **Live Test**: Verify AI secretary in a real-world scenario with customer links.
+- [x] **AI Secretary Link Delivery**: Automated link sending to target customers (v2.2.1).
+- [x] **Cloud Startup Optimization**: Fixed 503/504 hangs with Lazy Loading (v2.1.6).
+- [x] **Diagnostic Visibility**: Added FB Token status to health check (v2.2.1).
+
+## 🔜 Next Steps
+- [ ] **Environment Setup**: Run `npm install` for Next.js consistency.
+- [ ] **Verification**: Confirm AI secretary DMs appear in customer inbox.
 - [ ] **UI Refinement**: Continue transitioning to M2/M3 modules.

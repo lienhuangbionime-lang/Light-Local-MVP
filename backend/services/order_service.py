@@ -314,16 +314,23 @@ async def handle_admin_secretarial_work(webhook_data: dict, background_tasks: Ba
         await save_orders(order_id=order_id)
         
         summary = "\n".join([f"- {i.product_code} x{i.quantity} ({i.product_name})" for i in valid_items])
+        
+        # 準備結帳連結
+        signature = generate_order_signature(order_id)
+        checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?s={signature}"
+        
         if target_psid:
-            signature = generate_order_signature(order_id)
-            checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?s={signature}"
-            reply_text = f"🤖 秘書自動補單 (對象: {buyer_name})\n單號: {order_id}\n解析成功！已反映至您的直播後台。\n👉 客戶資料：{phone or '未留'}, {shipping or '未留'}\n🔗 結帳連結：{checkout_url}"
-            # 原本這裡會跳過 CURRENT_PAGE_ID，但我們希望管理員在收件匣也能看到 AI 的確認
-            await send_messenger_link(sender_id, order_id, valid_items, text=reply_text)
-            config.LAST_EVENTS.insert(0, {"time": "AI_OK", "content": f"🤖 秘書自動補單: {buyer_name}"})
+            # 1. 傳送回饋給管理員 (告知解析成功)
+            admin_reply = f"🤖 秘書自動補單 (對象: {buyer_name})\n單號: {order_id}\n解析成功！已反映至直播系統。\n🔗 結帳連結：{checkout_url}"
+            await send_messenger_link(sender_id, "None", [], text=admin_reply)
+            
+            # 2. 自動傳送連結給客戶 (這才是真正關鍵)
+            customer_reply = f"您好 {buyer_name}，AI 秘書已為您建立訂單：\n{summary}\n\n👉 請點擊下方連結確認您的 7-11 門市資訊：\n{checkout_url}"
+            await send_messenger_link(target_psid, order_id, valid_items, text=customer_reply)
+            
+            config.LAST_EVENTS.insert(0, {"time": "AI_OK", "content": f"🤖 秘書自動補單且已傳送連結給: {buyer_name}"})
             await save_events()
         else:
-            signature = generate_order_signature(order_id)
-            checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?s={signature}"
-            reply_text = f"✅ 秘書已建檔 (單號: {order_id})\n客戶：{buyer_name}\n電話：{phone or '未辨識'}\n門市：{shipping or '未辨識'}\n品項：\n{summary}\n\n👉 請點擊連結確認資料：\n{checkout_url}"
+            # 純管理員模式 (沒有目標 PSID)
+            reply_text = f"✅ 秘書已建檔 (單號: {order_id})\n客戶：{buyer_name}\n品項：\n{summary}\n\n👉 結帳連結：\n{checkout_url}"
             await send_messenger_link(sender_id, order_id, valid_items, text=reply_text)
