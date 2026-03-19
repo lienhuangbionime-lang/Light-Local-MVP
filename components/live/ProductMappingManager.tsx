@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Zap, Plus, Minus, Trash2, RefreshCw } from "lucide-react"
+import { Zap, Plus, Minus, Trash2, RefreshCw, CheckCircle2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
     Dialog,
@@ -202,9 +202,19 @@ export const ProductMappingManager = ({
                                                 className="font-black text-center text-lg h-10 border-primary/20 bg-background"
                                             />
                                             {(stats.pending > 0 || stats.confirmed > 0) && (
-                                                <div className="absolute -top-3 -right-3 flex gap-1 z-10 scale-90">
-                                                    {stats.pending > 0 && <Badge variant="secondary" className="bg-amber-400 text-amber-950 font-bold px-1.5 h-5 border-amber-500/20">{stats.pending}</Badge>}
-                                                    {stats.confirmed > 0 && <Badge variant="default" className="bg-emerald-600 font-bold px-1.5 h-5 border-emerald-700/20">{stats.confirmed}</Badge>}
+                                                <div className="absolute -top-3 -right-3 flex flex-col gap-1 z-10 scale-75 origin-top-right">
+                                                    {stats.confirmed > 0 && (
+                                                        <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-600 font-black px-1.5 h-5 border-emerald-700/20 shadow-sm flex items-center gap-1">
+                                                            <CheckCircle2 className="h-2 w-2" />
+                                                            {stats.confirmed}
+                                                        </Badge>
+                                                    )}
+                                                    {stats.pending > 0 && (
+                                                        <Badge variant="secondary" className="bg-amber-400 hover:bg-amber-400 text-amber-950 font-black px-1.5 h-5 border-amber-500/20 shadow-sm flex items-center gap-1">
+                                                            <RefreshCw className="h-2 w-2 animate-spin-slow" />
+                                                            {stats.pending}
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -310,10 +320,18 @@ export const ProductMappingManager = ({
                                         </div>
                                         {mapping.productId && (
                                             <div className={cn(
-                                                "whitespace-nowrap rounded-lg px-2 py-1.5 text-[10px] font-black border tracking-tighter",
-                                                totalQty <= 5 ? "bg-red-50 text-red-600 border-red-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                "whitespace-nowrap rounded-lg px-2 py-1.5 text-[10px] font-black border tracking-tighter flex flex-col items-center leading-none min-w-[60px]",
+                                                (totalQty - stats.confirmed) <= 0 
+                                                    ? "bg-rose-500 text-white border-rose-600 animate-pulse" 
+                                                    : "bg-emerald-50 text-emerald-600 border-emerald-100"
                                             )}>
-                                                {t("live.mapping.stock_count", { count: totalQty })}
+                                                <span className="opacity-70 text-[8px] uppercase">{t("live.mapping.available_short") || "剩餘"}</span>
+                                                <span className="text-sm">
+                                                    {totalQty - stats.confirmed}
+                                                </span>
+                                                <span className="opacity-50 text-[7px] mt-0.5">
+                                                    ({t("live.mapping.total_short") || "總"}{totalQty})
+                                                </span>
                                             </div>
                                         )}
                                     </div>

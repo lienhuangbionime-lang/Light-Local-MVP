@@ -76,6 +76,19 @@ export const DiagnosticConsole = ({
                     >
                         {t("live.diag.reset_deep")}
                     </Button>
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-[9px] text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-6 px-2 border border-purple-200 font-bold" 
+                        onClick={() => {
+                            if (confirm("確定要【徹底清空】所有已填單的資料嗎？\n(請確保您已下載 Excel 並匯入賣貨便)")) {
+                                onReset(true); // 使用 deep reset 的邏輯，或者之後可以更細分
+                            }
+                        }}
+                        disabled={isLoadingReset}
+                    >
+                        🗑️ {t("live.diag.clear_confirmed") || "清空已確認單"}
+                    </Button>
                 </div>
             )}
         </div>

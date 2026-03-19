@@ -16,9 +16,10 @@ class Order(BaseModel):
     shipping_info: Optional[str] = None
     phone: Optional[str] = None
     buyer_name: Optional[str] = None
-    source_comment_id: Optional[str] = None
     instance_id: Optional[str] = None
     created_at: float = 0.0
+    shipping_fee: float = 0.0
+    free_shipping_threshold: int = 999
 
 class ConfirmOrderRequest(BaseModel):
     shipping_info: str

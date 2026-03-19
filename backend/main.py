@@ -174,13 +174,19 @@ async def set_live_status(data: Dict):
 
 @app.get("/api/seller/stats")
 async def get_stats():
-    """統計銷售數據"""
+    """統計銷售數據 (細分已給連結與已確認)"""
     stats = {}
     for order in ORDER_POOL.values():
         if order.created_at < config.SESSION_START_TIME: continue
         for item in order.items:
-            code = item.product_code
-            stats[code] = stats.get(code, 0) + item.quantity
+            code = item.product_code.upper()
+            if code not in stats:
+                stats[code] = {"pending": 0, "confirmed": 0}
+            
+            if order.status == "CONFIRMED" or order.status == "HARVESTED":
+                stats[code]["confirmed"] += item.quantity
+            else:
+                stats[code]["pending"] += item.quantity
     return stats
 
 @app.post("/api/seller/harvest")
@@ -201,19 +207,33 @@ async def run_harvest(request: Request):
     return {"status": "success", "harvested": count}
 
 @app.delete("/api/seller/orders")
-async def clear_orders_endpoint(request: Request):
+async def clear_orders_endpoint(request: Request, force: bool = False):
     sig = request.headers.get("X-Admin-Signature")
     ts = request.headers.get("X-Admin-Timestamp")
     
     is_valid = verify_admin_signature(sig, ts)
-    print(f"[DEBUG] Clear Orders Attempt: ts={ts}, sig={sig}, valid={is_valid}")
-    
     if not is_valid:
         raise HTTPException(status_code=403, detail="Unauthorized")
-    config.ORDER_POOL.clear()
-    config.PROCESSED_COMMENT_IDS.clear()
-    deleted = await clear_orders_on_cloud()
-    return {"status": "success", "count": deleted}
+    
+    # 若不是 force (全清)，則只清除 PENDING (已給連結)
+    # 若是 force，則清空全部
+    pending_only = not force
+    
+    # 1. 清理本地 Cache
+    if pending_only:
+        # 僅刪除 PENDING
+        to_delete = [oid for oid, o in config.ORDER_POOL.items() if o.status == "PENDING"]
+        for oid in to_delete:
+            del config.ORDER_POOL[oid]
+        # PROCESSED_COMMENT_IDS 不清理，避免重覆進單 (除非全清)
+    else:
+        # 全清
+        config.ORDER_POOL.clear()
+        config.PROCESSED_COMMENT_IDS.clear()
+    
+    # 2. 清理雲端
+    deleted = await clear_orders_on_cloud(pending_only=pending_only)
+    return {"status": "success", "count": deleted, "mode": "pending_only" if pending_only else "all"}
 
 @app.get("/api/debug/time")
 async def get_server_time():
@@ -310,7 +330,8 @@ async def confirm_checkout(order_id: str, data: Dict, s: Optional[str] = None):
         order.shipping_info = data.get("shipping_info")
         order.phone = data.get("phone")
         order.status = "CONFIRMED"
-        await save_orders(order_id=order_id)
+        # 立即搬移到封存區 (archived_orders)，讓主 orders 保持清空
+        await save_orders(order_id=order_id, move_to_archive=True)
         return {"status": "success"}
     raise HTTPException(status_code=404, detail="Order not found")
 
@@ -414,59 +435,106 @@ async def recover_order(data: Dict):
 @app.get("/api/seller/orders/export_xlsx")
 async def export_orders():
     """
-    導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel
+    導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel (使用原始模板)
     格式：收件人姓名, 收件人手機, 取貨門市店號, 訂單金額, 商品名稱, 收件人Email, 備註
     """
+    # [CRITICAL] 使用絕對路徑確保在不同環境 (本機/Render) 都能找到模板
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    template_path = os.path.join(project_root, "賣貨便_訂單匯入.xlsm")
+    
     output = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output)
-    worksheet = workbook.add_worksheet()
     
-    # 賣貨便官方欄位
-    headers = ["收件人姓名", "收件人手機", "取貨門市店號", "訂單金額", "商品名稱", "收件人Email", "備註"]
-    for i, h in enumerate(headers): 
-        worksheet.write(0, i, h)
-    
-    row = 1
-    for o in ORDER_POOL.values():
-        if o.created_at < config.SESSION_START_TIME: continue
-        if o.status != "CONFIRMED" and o.status != "HARVESTED": continue
+    try:
+        import openpyxl
+        # 載入現有模板
+        if os.path.exists(template_path):
+            wb = openpyxl.load_workbook(template_path, keep_vba=True)
+            ws = wb.active # 假設第一個分頁是匯入頁
+        else:
+            # Fallback to creating a new one if template is missing
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            headers = ["收件人姓名", "收件人手機", "取貨門市店號", "訂單金額", "商品名稱", "收件人Email", "備註"]
+            for i, h in enumerate(headers): ws.cell(row=6, column=i+1, value=h)
+
+        # --- [MERGE LOGIC] 依照用戶合併訂單，以利計算免運門檻 ---
+        merged_orders = {}
+        for o in config.ORDER_POOL.values():
+            # 移除時間過濾，允許跨場次累積（只要還在封存區就匯出）
+            if o.status not in ["CONFIRMED", "HARVESTED"]: continue
+            
+            # [TRIPLET RULE] 需電話、門市、收件人完全一致才算同一單合併
+            b_name = (o.buyer_name or o.fb_user_name).strip()
+            phone = (o.phone or "NO_PHONE").strip()
+            store = (o.shipping_info or "NO_STORE").strip()
+            key = f"{phone}_{store}_{b_name}"
+            
+            if key not in merged_orders:
+                merged_orders[key] = {
+                    "buyer_name": b_name,
+                    "phone": o.phone,
+                    "shipping_info": o.shipping_info,
+                    "items": [],
+                    "shipping_fee": config.SHIPPING_FEE,
+                    "free_shipping_threshold": config.FREE_SHIPPING_THRESHOLD
+                }
+            # 合併品項
+            merged_orders[key]["items"].extend(o.items)
+            # 門市資訊以最新（或有填寫）的為準
+            if o.shipping_info: merged_orders[key]["shipping_info"] = o.shipping_info
+            if o.phone: merged_orders[key]["phone"] = o.phone
+            if o.buyer_name: merged_orders[key]["buyer_name"] = o.buyer_name
+
+        row = 7 # 從第 7 列開始填入
+        for key, data in merged_orders.items():
+            # 1. 計算金額 (以合併後的總件數判斷免運)
+            items_price = sum((item.price or 0) * item.quantity for item in data["items"])
+            total_qty = sum(item.quantity for item in data["items"])
+            
+            # 取整筆合併單的門檻與運費設定 (以全域設定為準)
+            threshold = data["free_shipping_threshold"]
+            base_shipping = data["shipping_fee"]
+            
+            is_free = total_qty >= threshold
+            actual_shipping = 0 if is_free else base_shipping
+            total_amount = int(round(items_price + actual_shipping))
+            
+            # 2. 彙整商品名稱 (合併後顯示所有品項)
+            from collections import Counter
+            counts = Counter()
+            for i in data["items"]:
+                counts[i.product_code] += i.quantity
+            items_summary = ", ".join([f"{code}x{qty}" for code, qty in counts.items()])
+            
+            # 3. 提取 6 碼店號
+            store_id = ""
+            if o.shipping_info:
+                import re
+                match = re.search(r'\d{6}', o.shipping_info)
+                store_id = match.group(0) if match else o.shipping_info
+
+            # 依照模板欄位填入 (與截圖一致，且符合用戶 290+50 => 302+38 邏輯)
+            platform_shipping = 38 # 賣貨便平台預設運費
+            ws.cell(row=row, column=1, value=o.buyer_name or o.fb_user_name) # 取件人姓名
+            ws.cell(row=row, column=2, value=o.phone or "")                 # 取件人手機
+            ws.cell(row=row, column=3, value=store_id)                      # 取貨門市
+            ws.cell(row=row, column=4, value="常溫")                        # 溫層
+            ws.cell(row=row, column=5, value=items_summary)                 # 商品
+            ws.cell(row=row, column=6, value=total_amount - platform_shipping) # 訂單金額 (340-38=302)
+            ws.cell(row=row, column=7, value=platform_shipping)             # 運費金額 (38)
+            row += 1
         
-        # 1. 計算總金額 (商品 + 運費)
-        total_items_price = sum((item.price or 0) * item.quantity for item in o.items)
-        total_qty = sum(item.quantity for item in o.items)
-        is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
-        total_amount = int(round(total_items_price + (0 if is_free else config.SHIPPING_FEE)))
-        
-        # 2. 彙整商品名稱
-        items_summary = ", ".join([f"{i.product_code}x{i.quantity}" for i in o.items])
-        
-        # 3. 提取 6 碼店號 (Regex 找連續 6 位數字)
-        store_id = ""
-        if o.shipping_info:
-            import re
-            match = re.search(r'\d{6}', o.shipping_info)
-            if match:
-                store_id = match.group(0)
-            else:
-                # 若找不到 6 碼店號，則保留完整資訊供賣家手動修改，不隨意切斷
-                store_id = o.shipping_info
-        
-        worksheet.write(row, 0, o.buyer_name or o.fb_user_name)     # 收件人姓名
-        worksheet.write(row, 1, o.phone or "")                      # 收件人手機
-        worksheet.write(row, 2, store_id)                           # 取貨門市店號
-        worksheet.write(row, 3, total_amount)                       # 訂單金額
-        worksheet.write(row, 4, items_summary)                      # 商品名稱
-        worksheet.write(row, 5, "")                                 # 收件人Email (空)
-        worksheet.write(row, 6, o.order_id)                         # 備註 (帶入單號)
-        row += 1
-    
-    workbook.close()
-    output.seek(0)
-    return StreamingResponse(
-        output, 
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=711_myship_orders.xlsx"}
-    )
+        wb.save(output)
+        output.seek(0)
+        return StreamingResponse(
+            output, 
+            media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
+            headers={"Content-Disposition": "attachment; filename=711_myship_harvest.xlsm"}
+        )
+    except Exception as e:
+        print(f"[EXPORT] Excel 導出失敗: {e}")
+        return {"status": "error", "message": f"Excel 處理失敗: {e}"}
 
 if __name__ == "__main__":
     import uvicorn

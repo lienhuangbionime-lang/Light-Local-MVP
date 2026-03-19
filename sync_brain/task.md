@@ -13,6 +13,8 @@
 - [x] **Diagnostic Visibility**: Added FB Token status to health check (v2.2.1).
 
 ## 🔜 Next Steps
+- [x] **AI Benchmarking**: Verified Gemma 3 27B's coding proficiency.
+- [x] **AI Brain Console**: Standalone Gradio tool launched at `http://localhost:7860`.
 - [ ] **Environment Setup**: Run `npm install` for Next.js consistency.
 - [ ] **Verification**: Confirm AI secretary DMs appear in customer inbox.
 - [ ] **UI Refinement**: Continue transitioning to M2/M3 modules.

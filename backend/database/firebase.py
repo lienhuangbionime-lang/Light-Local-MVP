@@ -67,32 +67,51 @@ async def acquire_lock(comment_id: str) -> bool:
             print(f"[LOCK] 鎖定異常 ({comment_id}): {str(e)}")
         return False
 
-async def clear_orders_on_cloud():
+async def clear_orders_on_cloud(pending_only: bool = False):
+    """
+    清理雲端訂單資料：
+    - pending_only=True: 僅清空 /orders (內容應皆為未填單連結)
+    - pending_only=False (Force): 同時清空 /orders 與 /archived_orders (徹底掃除)
+    """
     if not db: return 0
     try:
         def _cleanup():
-            batch = db.batch()
             count = 0
-            docs = db.collection("orders").stream()
-            for doc in docs:
+            # 1. 清理活躍區 (/orders)
+            active_docs = db.collection("orders").stream()
+            batch = db.batch()
+            for doc in active_docs:
                 batch.delete(doc.reference)
                 count += 1
                 if count % 500 == 0:
                     batch.commit()
                     batch = db.batch()
+            if count % 500 != 0: batch.commit()
+
+            # 2. 如果是深度大掃除，才清理封存區 (/archived_orders)
+            if not pending_only:
+                arch_docs = db.collection("archived_orders").stream()
+                batch = db.batch()
+                a_count = 0
+                for doc in arch_docs:
+                    batch.delete(doc.reference)
+                    a_count += 1
+                    if a_count % 500 == 0:
+                        batch.commit()
+                        batch = db.batch()
+                if a_count % 500 != 0: batch.commit()
+                count += a_count
+
+                # 清理鎖與留言記錄
+                lock_docs = db.collection("locks").stream()
+                for ldoc in lock_docs:
+                    ldoc.reference.delete()
             
-            if count % 500 != 0:
-                batch.commit()
-            
-            # Clear locks too
-            lock_docs = db.collection("locks").stream()
-            for ldoc in lock_docs:
-                ldoc.reference.delete()
             return count
             
-        deleted_count = await asyncio.to_thread(_cleanup)
-        print(f"[FIREBASE] 雲端清理完成：刪除 {deleted_count} 筆訂單")
-        return deleted_count
+        total_processed = await asyncio.to_thread(_cleanup)
+        print(f"[FIREBASE] 雲端清理完成 ({'僅活躍區' if pending_only else '全部區'}): 處理 {total_processed} 筆")
+        return total_processed
     except Exception as e:
         print(f"[FIREBASE] 雲端清理失敗: {e}")
         return 0
@@ -131,25 +150,37 @@ async def sync_state_from_cloud(sync_orders: bool = False, force: bool = False):
 async def sync_orders_from_cloud():
     if not db: return
     try:
-        def _get_orders():
-            return db.collection("orders").stream()
-        docs = await asyncio.to_thread(_get_orders)
-        for doc in docs:
+        def _get_all_orders():
+            # 同步活躍訂單 (通常為剛開單未填單)
+            orders = db.collection("orders").stream()
+            # 同步所有封存訂單 (成交單)，不分場次連併累計
+            archived = db.collection("archived_orders").stream()
+            return list(orders), list(archived)
+            
+        order_docs, archived_docs = await asyncio.to_thread(_get_all_orders)
+        for doc in (order_docs + archived_docs):
             config.ORDER_POOL[doc.id] = Order(**doc.to_dict())
     except Exception as e:
         print(f"[FIREBASE] 訂單同步失敗: {e}")
 
-async def save_orders(save_config: bool = False, fields: Optional[List[str]] = None, order_id: Optional[str] = None):
+async def save_orders(save_config: bool = False, fields: Optional[List[str]] = None, order_id: Optional[str] = None, move_to_archive: bool = False):
     if not db: return
     try:
         def _save():
             batch = db.batch()
             if order_id and order_id in config.ORDER_POOL:
-                doc_ref = db.collection("orders").document(order_id)
+                target_collection = "archived_orders" if move_to_archive else "orders"
+                doc_ref = db.collection(target_collection).document(order_id)
                 # Pydantic V2 uses model_dump
                 order_data = config.ORDER_POOL[order_id]
                 data_dict = order_data.model_dump() if hasattr(order_data, 'model_dump') else order_data.dict()
                 batch.set(doc_ref, data_dict)
+                
+                # 如果是搬移到封存區，要同步刪除原 orders 中的文件
+                if move_to_archive:
+                    old_ref = db.collection("orders").document(order_id)
+                    batch.delete(old_ref)
+                    
             elif not order_id and not save_config:
                 return
 

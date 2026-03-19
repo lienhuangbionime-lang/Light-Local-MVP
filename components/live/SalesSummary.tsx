@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Radio, Trash2, Download, CheckCircle2 } from "lucide-react"
+import { Radio, Trash2, Download, CheckCircle2, UserCheck, Truck } from "lucide-react"
 import { useAppStore } from "@/lib/store"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -196,7 +196,15 @@ export const SalesSummary = ({
                                 <div key={sale.id} className="flex items-center justify-between text-xs py-1.5 border-b border-border/30 last:border-0 group">
                                     <div className="flex-1">
                                         <p className="font-medium">{sale.itemName}</p>
-                                        {sale.buyerName && <p className="text-[10px] text-muted-foreground">{t("live.summary.buyer")}{sale.buyerName}</p>}
+                                        <p className="text-[10px] text-muted-foreground flex flex-col">
+                                            <span>
+                                                {t("live.summary.buyer")}
+                                                <span className="text-primary font-bold ml-1">
+                                                    {sale.buyerName || sale.fbName || "Unknown"}
+                                                </span>
+                                            </span>
+                                            {sale.phone && <span className="text-[9px] opacity-70">📞 {sale.phone}</span>}
+                                        </p>
                                         <p className="text-[11px] text-muted-foreground">{t("live.summary.qty_x_price", { qty: sale.quantity, price: Math.round(sale.unitPrice) })}</p>
                                     </div>
                                     <div className="text-right flex items-center gap-3">

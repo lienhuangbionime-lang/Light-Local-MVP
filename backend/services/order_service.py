@@ -158,7 +158,9 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
                 status="PENDING",
                 source_comment_id=comment_id,
                 instance_id=config.INSTANCE_ID,
-                created_at=time.time()
+                created_at=time.time(),
+                shipping_fee=config.SHIPPING_FEE,
+                free_shipping_threshold=config.FREE_SHIPPING_THRESHOLD
             )
             config.ORDER_POOL[order_id] = new_order
             
@@ -337,7 +339,9 @@ async def handle_admin_secretarial_work(webhook_data: dict, background_tasks: Ba
             phone=phone,
             buyer_name=buyer_name,
             instance_id=config.INSTANCE_ID,
-            created_at=time.time()
+            created_at=time.time(),
+            shipping_fee=config.SHIPPING_FEE,
+            free_shipping_threshold=config.FREE_SHIPPING_THRESHOLD
         )
         
         config.ORDER_POOL[order_id] = new_order

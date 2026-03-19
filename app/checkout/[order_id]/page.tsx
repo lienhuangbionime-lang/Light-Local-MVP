@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { ShoppingCart, MapPin, Phone, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Camera, ImagePlus } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
 
 export default function CheckoutPage() {
   const params = useParams()
@@ -221,9 +222,10 @@ export default function CheckoutPage() {
   }
 
   if (isSuccess) {
-    const totalAmount = order?.items?.reduce((sum: number, item: any) => sum + (item.price || 0) * item.quantity, 0) || 0
-    // [SHIPPING HIDE] 依賣家要求，不顯示運費給買家看，總額僅計商品
-    const shippingFee = 0 
+    const itemCount = order?.items?.reduce((sum: number, i: any) => sum + i.quantity, 0) || 0
+    const subtotal = order?.items?.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0) || 0
+    const shippingFee = (itemCount >= (order?.free_shipping_threshold ?? 999)) ? 0 : (order?.shipping_fee ?? 0)
+    const totalAmount = subtotal + shippingFee
 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-background text-center">
@@ -247,7 +249,7 @@ export default function CheckoutPage() {
           <CardHeader className="pb-3 text-left">
             <CardTitle className="text-sm font-medium flex justify-between">
               <span>訂單編號: {orderId}</span>
-              <span className="text-primary font-bold">NT$ {totalAmount + shippingFee}</span>
+              <span className="text-primary font-bold">NT$ {totalAmount}</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="text-left text-sm space-y-3">
@@ -265,10 +267,11 @@ export default function CheckoutPage() {
                   <span>${(item.price || 0) * item.quantity}</span>
                 </div>
               ))}
-              {/* [SHIPPING HIDE] 隱藏運費列 */}
+              
+              {/* [SHIPPING HIDE] 依賣家要求，對外隱藏費用拆分細節 */}
               <div className="flex justify-between font-bold text-sm pt-1 border-t-2 border-double border-primary/20">
                 <span>應付總額</span>
-                <span className="text-primary">NT$ {totalAmount + shippingFee}</span>
+                <span className="text-primary">NT$ {subtotal}</span>
               </div>
             </div>
           </CardContent>
@@ -288,6 +291,11 @@ export default function CheckoutPage() {
       </div>
     )
   }
+
+  const itemCount = order?.items?.reduce((sum: number, i: any) => sum + i.quantity, 0) || 0
+  const subtotal = order?.items?.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0) || 0
+  const shippingFee = (itemCount >= (order?.free_shipping_threshold ?? 999)) ? 0 : (order?.shipping_fee ?? 0)
+  const totalAmount = subtotal + shippingFee
 
   return (
     <div className="max-w-lg mx-auto min-h-screen p-4 py-8 space-y-6">
@@ -325,13 +333,14 @@ export default function CheckoutPage() {
           <div className="mt-4 pt-4 border-t space-y-1">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">商品小計</span>
-              <span>${order.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0)}</span>
+              <span>${subtotal}</span>
             </div>
-            {/* [SHIPPING HIDE] 完全不顯示運費列 */}
+            
+            {/* [SHIPPING HIDE] 依賣家要求，不揭露運費細節給買家 */}
             <div className="flex justify-between font-bold text-lg pt-2 border-t-2 border-double mt-2">
               <span>應付總額</span>
               <span className="text-primary">
-                NT$ {order.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.quantity, 0)}
+                NT$ {subtotal}
               </span>
             </div>
           </div>
