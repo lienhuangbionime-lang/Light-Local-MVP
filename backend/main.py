@@ -36,10 +36,10 @@ from backend.database.firebase import (
     load_orders, load_events, save_orders, clear_orders_on_cloud, 
     sync_state_from_cloud, sync_orders_from_cloud, save_events
 )
-from backend.services.fb_service import (
-    process_webhook_data, send_messenger_link, subscribe_page_to_app, save_fb_config, load_fb_config
-)
-from backend.services.order_service import process_order, handle_admin_secretarial_work
+# from backend.services.fb_service import (
+#     process_webhook_data, send_messenger_link, subscribe_page_to_app, save_fb_config, load_fb_config
+# )
+# from backend.services.order_service import process_order, handle_admin_secretarial_work
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -97,24 +97,26 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
-    from backend.database.firebase import db
-    return {
-        "status": "ok",
-        "version": "2.2.1 (Stability & Link Fix)",
-        "instance_id": INSTANCE_ID,
-        "is_live": config.IS_LIVE_ACTIVE,
-        "has_fb_token": bool(config.PAGE_ACCESS_TOKEN and config.PAGE_ACCESS_TOKEN != "YOUR_FB_PAGE_TOKEN"),
-        "has_ai_key": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
-        "env": {
-            "PORT": os.environ.get("PORT"),
-            "RENDER": bool(os.environ.get("RENDER")),
-            "PYTHONPATH": os.environ.get("PYTHONPATH")
-        },
-        "firebase_connected": db is not None,
-        "stores_loaded": len(config.ACTIVE_PRODUCTS) > 0 or bool(config.CONFIG_CACHE.get("last_sync")),
-        "products_count": len(config.ACTIVE_PRODUCTS),
-        "has_ai_key": bool(config.GEMINI_API_KEY)
-    }
+    try:
+        from backend.database.firebase import db
+        return {
+            "status": "ok",
+            "version": "2.2.2 (Stability Fix)",
+            "instance_id": INSTANCE_ID,
+            "is_live": config.IS_LIVE_ACTIVE,
+            "firebase_connected": db is not None,
+            "stores_loaded": len(config.ACTIVE_PRODUCTS) > 0 or bool(config.CONFIG_CACHE.get("last_sync")),
+            "products_count": len(config.ACTIVE_PRODUCTS),
+            "has_fb_token": bool(config.PAGE_ACCESS_TOKEN and config.PAGE_ACCESS_TOKEN != "YOUR_FB_PAGE_TOKEN"),
+            "has_ai_key": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
+            "env": {
+                "PORT": os.environ.get("PORT"),
+                "RENDER": bool(os.environ.get("RENDER")),
+                "PYTHONPATH": os.environ.get("PYTHONPATH")
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e), "version": "2.2.2"}
 
 @app.get("/webhook/fb")
 async def verify_fb_webhook(request: Request):
@@ -125,6 +127,7 @@ async def verify_fb_webhook(request: Request):
 
 @app.post("/webhook/fb")
 async def fb_webhook(request: Request, background_tasks: BackgroundTasks):
+    from backend.services.fb_service import process_webhook_data
     try:
         data = await request.json()
         return await process_webhook_data(data, background_tasks)
