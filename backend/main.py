@@ -48,14 +48,21 @@ async def lifespan(app: FastAPI):
     print(f"[SYSTEM] 啟動背景同步任務... (Instance: {INSTANCE_ID})")
     try:
         init_firebase()
-        await asyncio.gather(load_orders(), load_events())
-        if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
-            from backend.services.fb_service import subscribe_page_to_app
-            # Use wait_for to prevent FB hanging during server boot
-            await asyncio.wait_for(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN), timeout=10.0)
-        print("[SYSTEM] 初始化完成")
+        # [CRITICAL] Background the loading to pass Render health checks FAST
+        async def loader():
+            try:
+                await asyncio.gather(load_orders(), load_events())
+                if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
+                    from backend.services.fb_service import subscribe_page_to_app
+                    await asyncio.wait_for(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN), timeout=15.0)
+                print("[SYSTEM] 數據載入與 FB 訂閱完成")
+            except Exception as le:
+                print(f"[ERROR] 背景加載失敗: {le}")
+        
+        asyncio.create_task(loader())
+        print("[SYSTEM] 異步初始化啟動")
     except Exception as e:
-        print(f"[ERROR] 初始化失敗或逾時: {e}")
+        print(f"[ERROR] 初始化啟動失敗: {e}")
     yield
     print("[SYSTEM] 正在關閉全域連線...")
     await global_client.aclose()
