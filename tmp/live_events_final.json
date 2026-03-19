@@ -1,0 +1,404 @@
+[
+  {
+    "time": "ai_ok",
+    "content": "AI 填單成功: Pham Hoai - 124036"
+  },
+  {
+    "time": "ai_ok",
+    "content": "AI 填單成功: Pham Hoai - 124036"
+  },
+  {
+    "time": "ok",
+    "content": "✅ 一般私訊成功 (25870842169223950)"
+  },
+  {
+    "time": "5ce1e5",
+    "data": {
+      "object": "page",
+      "entry": [
+        {
+          "time": 1773850273895,
+          "id": "900699483135455",
+          "messaging": [
+            {
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "timestamp": 1773850273003,
+              "message": {
+                "mid": "m_Qg9UGlwV0s3drePw3ze5pD3a7MXIHwbIB5ibHQOXdgFi5HO-IsSfzR4PoWlUI32mHs4MTYq7oWj-P-Sq88Fy7A",
+                "text": "D+2"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "content": "D+2"
+  },
+  {
+    "content": "✅ 一般私訊成功 (25870842169223950)",
+    "time": "ok"
+  },
+  {
+    "content": "C+2",
+    "time": "e87f00",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "C+2",
+                "mid": "m_BWcu328thruL8IglwbalFD3a7MXIHwbIB5ibHQOXdgGUJVWl6Rp3ae6ULVJLcJwOIIJOmXwwcPAA3-w2XsI65Q"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773849651848
+            }
+          ],
+          "time": 1773849652427,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "✅ 一般私訊成功 (25870842169223950)",
+    "time": "ok"
+  },
+  {
+    "content": "B+1",
+    "time": "90832b",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "B+1",
+                "mid": "m_WUXhCbDrNIuZU-3wpUgZET3a7MXIHwbIB5ibHQOXdgH1pB5xV6BX5GZ9ppzN1oCxqfR_rS6tQjjqorrQWHYIpw"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773849566258
+            }
+          ],
+          "time": 1773849566773,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "✅ 一般私訊成功 (25870842169223950)",
+    "time": "ok"
+  },
+  {
+    "content": "A+1",
+    "time": "95f6f9",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "message": {
+                "text": "A+1",
+                "mid": "m_U5Niw2kOyOuLo8atFpNjQD3a7MXIHwbIB5ibHQOXdgE8XurwmdOb6G7g6z49TMnOk2KwWbfrcfqqnPaOApMLQA"
+              },
+              "timestamp": 1773847380209
+            }
+          ],
+          "time": 1773847380793,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "[AI] ⚠️ API KEY 未設定 (Environment Variable 'GEMINI_API_KEY' is empty)！無法進行辨識。",
+    "time": "error"
+  },
+  {
+    "content": "✅ 一般私訊成功 (25870842169223950)",
+    "time": "ok"
+  },
+  {
+    "content": "A+1",
+    "time": "ec1204",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "A+1",
+                "mid": "m_CpGsjGijCsUAV-tyOBxPGj3a7MXIHwbIB5ibHQOXdgGegb_ddq1J7NgVtUsYVKqnCYQElQQlB3mQc0XDsZ8v9Q"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773846736253
+            }
+          ],
+          "time": 1773846736970,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "Cảm ơn đã hỗ trợ buổi livestream.",
+    "time": "fa0d34",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "Cảm ơn đã hỗ trợ buổi livestream.",
+                "mid": "m_0ek10qYBxHtD880PXWZqgT3a7MXIHwbIB5ibHQOXdgGQXtljyonao5RpoAjNMJrU88LGD7zLrdBFkBLDOuN1AQ"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773845948146
+            }
+          ],
+          "time": 1773845969339,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "Cảm ơn đã hỗ trợ buổi livestream.",
+    "time": "985f38",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "Cảm ơn đã hỗ trợ buổi livestream.",
+                "mid": "m_0ek10qYBxHtD880PXWZqgT3a7MXIHwbIB5ibHQOXdgGQXtljyonao5RpoAjNMJrU88LGD7zLrdBFkBLDOuN1AQ"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773845948146
+            }
+          ],
+          "time": 1773846010532,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "Cảm ơn đã hỗ trợ buổi livestream.",
+    "time": "767446",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "Cảm ơn đã hỗ trợ buổi livestream.",
+                "mid": "m_0ek10qYBxHtD880PXWZqgT3a7MXIHwbIB5ibHQOXdgGQXtljyonao5RpoAjNMJrU88LGD7zLrdBFkBLDOuN1AQ"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773845948146
+            }
+          ],
+          "time": 1773845948911,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "content": "Cảm ơn đã hỗ trợ buổi livestream.",
+    "time": "dead83",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "Cảm ơn đã hỗ trợ buổi livestream.",
+                "mid": "m_0ek10qYBxHtD880PXWZqgT3a7MXIHwbIB5ibHQOXdgGQXtljyonao5RpoAjNMJrU88LGD7zLrdBFkBLDOuN1AQ"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773845948146
+            }
+          ],
+          "time": 1773845990065,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  },
+  {
+    "data": {
+      "entry": [
+        {
+          "changes": [
+            {
+              "field": "feed",
+              "value": {
+                "from": {
+                  "id": "u_test_aa",
+                  "name": "Test AA User"
+                },
+                "message": "AA+3",
+                "comment_id": "sim_29913de2",
+                "item": "comment"
+              }
+            }
+          ],
+          "id": "900699483135455",
+          "time": 1773839806
+        }
+      ],
+      "object": "page"
+    },
+    "content": "AA+3",
+    "time": "SIM_b843",
+    "rejection": "[PARSER] 拒絕代碼 AA: 不在目前字典中 (可用: [])"
+  },
+  {
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "B+2",
+                "mid": "m_d7QKsrIdMcmyKfjnYEqKrD3a7MXIHwbIB5ibHQOXdgGIudWidA2ATPBiDigEpXBtPAbqHsNJx3lwtdxF6l8mFg"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773785166419
+            }
+          ],
+          "time": 1773785166888,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    },
+    "content": "B+2",
+    "time": "fb6859",
+    "rejection": "[PARSER] 拒絕代碼 B: 不在目前字典中 (可用: [])"
+  },
+  {
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "message": {
+                "text": "B+2",
+                "mid": "m_wzbpELompPJgJr4GYy9gLD3a7MXIHwbIB5ibHQOXdgHqtpTHN5GMSpoXEWFt74TRwDpoKzpgmvh8JlRfelqRHA"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "timestamp": 1773785094661
+            }
+          ],
+          "time": 1773785095407,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    },
+    "content": "B+2",
+    "time": "18cf18",
+    "rejection": "[PARSER] 拒絕代碼 B: 不在目前字典中 (可用: [])"
+  },
+  {
+    "content": "✅ 一般私訊成功 (25870842169223950)",
+    "time": "ok"
+  },
+  {
+    "content": "C+1",
+    "time": "e8b17b",
+    "data": {
+      "entry": [
+        {
+          "messaging": [
+            {
+              "recipient": {
+                "id": "900699483135455"
+              },
+              "sender": {
+                "id": "25870842169223950"
+              },
+              "message": {
+                "text": "C+1",
+                "mid": "m_uZ8cwvdKuCL55505PSaVrT3a7MXIHwbIB5ibHQOXdgFresBxaH0UQ3nUC2exnhVA_YzraRZONN-B78nonb-h2w"
+              },
+              "timestamp": 1773781918539
+            }
+          ],
+          "time": 1773781919296,
+          "id": "900699483135455"
+        }
+      ],
+      "object": "page"
+    }
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "orders": {
+    "ORD_D722D1DF": {
+      "order_id": "ORD_D722D1DF",
+      "fb_user_id": "user1",
+      "fb_user_name": "User One",
+      "items": [
+        {
+          "product_code": "A",
+          "quantity": 1,
+          "product_name": "TEST ITEM A"
+        }
+      ],
+      "status": "PENDING",
+      "shipping_info": null,
+      "phone": null,
+      "buyer_name": null,
+      "source_comment_id": "comment_001"
+    }
+  },
+  "active_products": {
+    "A": "TEST ITEM A"
+  },
+  "processed_comment_ids": [
+    "comment_001"
+  ]
+}

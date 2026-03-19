@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Live Assistant Local",
+  "version": "1.0.0",
+  "description": "Multi-language logistics assistant for live commerce.",
+  "action": {
+    "default_popup": "index.html"
+  },
+  "icons": {
+    "16": "icon-light-32x32.png",
+    "32": "icon-light-32x32.png",
+    "48": "icon-light-32x32.png",
+    "128": "icon-light-32x32.png"
+  },
+  "permissions": []
+}
