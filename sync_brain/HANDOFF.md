@@ -1,31 +1,32 @@
 # 🤝 取貨記帳系統 - Session Handoff
 
 ## 🎯 Current Status (End of Session)
-**Date**: 2026-03-13 (更新於 00:30)
-**Focus**: Messenger 穩定化, 永久 Token 部署, Context Hub 安裝
+**Date**: 2026-03-19 (更新於 23:30)
+**Focus**: AI 連結修復, OpenClaw 整合計畫, N+1 穩定化
 
-### ✅ 最新成就總結 (2026-03-13)
+### ✅ 最新成就總結 (2026-03-19)
 
-#### 1. Messenger 私訊穩定化
-- **永久 Page Access Token**: 已成功更換 MuMu shop 的永久 Token，並更新至 Render 的 `PAGE_ACCESS_TOKEN` 環境變數。
-- **後端重啟防護**: 修正了 `main.py` 的 `parse_comment` 邏輯。現在若商品代號尚未同步，系統會「暫緩」留言處理（`missing_code`），等待同步後自動在下一次 Poll 重新嘗試，避免開播初期的留言遺失。
-- **前端崩潰修復**: 解決了 `DiagnosticConsole.tsx` 因讀取 undefined `data` 造成的 `TypeError: .slice()` 崩潰。
+#### 1. AI 連結與秘書功能修復
+- **AI 結帳連結**: 現在 AI 秘書自動補單後，回覆訊息會帶上 **「安全結帳連結」** (含 HMAC 簽名)。
+- **函數崩潰修正**: 解決了 `order_service.py` 中 `handle_admin_secretarial_work` 參數不匹配與變數未定義的問題，確保背景處理不報錯。
+- **Regex 強度**: 已確認支援 `A1+1` 與 `蘋果+1` 等混合中英文的 N+1 格式。
 
-#### 2. 開發工具鏈升級
-- **Context Hub (chub)**: 已成功安裝 `@aisuite/chub` 全域工具。路徑位於 `C:\Users\lien.huang\AppData\node\chub.cmd`。
-- **環境變數對等**: 已確認本地 Node/npm 路徑為 `C:\Users\lien.huang\AppData\node`。
+#### 2. 開發生態系 & 記憶持久化
+- **OpenClaw 計畫**: 制定了 `openclaw_plan.md`，將引導 AI 協助開發 `C:\Users\lien.huang` 下的所有專案。
+- **Skill 部署**: 已將 `get-api-docs` 技能安裝至專案目錄，支援即時抓取最新文件。
+- **記憶同步**: 已更新 `sync_brain` 全系列檔案，確保對話上下文永不丟失。
 
 ---
 
 ## ⚡ Next Steps for Next Session
 
 **🔴 P1 — 立即完成**
-- [ ] **FB App Review**: 用戶需依據 `facebook_app_review_guide.md` 錄製影片並提交 `pages_messaging` 審核，以對非開發人員發訊。
-- [ ] **正式開播測試**: 配合粉專進行一次完整的 15 分鐘直播流程測試。
+- [ ] **環境部署**: 在本地執行 `npm install` 解決 Next.js 16 依賴問題。
+- [ ] **OpenClaw 安裝**: 依據 `openclaw_plan.md` 執行全域安裝與 onboard。
 
 **🟡 P2 — 本週完成**
-- [ ] Harvest 按鈕結果接 Zustand `M5 Inventory` 自動更新
-- [ ] 設計 M1 ~ M7 Zustand Store Interfaces（Phase 1 收尾）
+- [ ] **正式開播測試**: 配合粉專進行一次完整的 15 分鐘直播流程測試，驗證 AI 補單連結是否可正常由客戶開啟。
+- [ ] **Yellow/Green Dot 驗收**: 確認補單成功後 UI 顯示黃點，填單後顯示綠點。
 
 **🟢 P3 — 中長期 Roadmap**
 - Phase 2: M2 批次匯率 UI + M3 Gemini Vision 單據辨識
@@ -34,5 +35,5 @@
 ---
 
 ## 🔒 State Preservation
-系統目前處於「高穩定」狀態。雲端伺服器 (Render) 已設定永久 Token，本地 Vercel 前端不再因 API 錯誤而畫面全白。
+系統目前處於「功能修復完成」狀態。AI 補單連結已調通，背景處理函數已穩定。
 `evolution_log.json` 已更新。

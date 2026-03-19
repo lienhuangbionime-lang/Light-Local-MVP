@@ -115,14 +115,21 @@ export const DiagnosticConsole = ({
                                         ) : evt.data?.entry?.[0]?.changes?.[0]?.value?.message ? (
                                             <span className="text-primary font-bold">{t("live.diag.event_comment", { text: evt.data.entry[0].changes[0].value.message })}</span>
                                         ) : evt.content ? (
-                                            <span className={cn(evt.time === "err" ? "text-destructive font-bold" : "text-muted-foreground italic")}>
+                                            <span className={cn(
+                                                evt.time === "err" ? "text-destructive font-bold" : 
+                                                evt.time === "warn" ? "text-amber-500 font-bold" :
+                                                "text-muted-foreground italic"
+                                            )}>
                                                 {evt.content}
                                             </span>
                                         ) : (
                                             <span className="opacity-70">{t("live.diag.event_raw", { data: (JSON.stringify(evt.data) || "{}").slice(0, 300) })}...</span>
                                         )}
                                         {evt.rejection && (
-                                            <div className="mt-1 text-destructive font-bold flex items-center gap-1">
+                                            <div className={cn(
+                                                "mt-1 font-bold flex items-center gap-1",
+                                                evt.time === "warn" ? "text-amber-500" : "text-destructive"
+                                            )}>
                                                 <Radio className="h-2 w-2 animate-pulse" /> {t("live.diag.rejection", { reason: evt.rejection })}
                                             </div>
                                         )}

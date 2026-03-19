@@ -158,7 +158,14 @@ async def process_webhook_data(data: Dict, background_tasks: BackgroundTasks, is
                         if fb_user_id == config.CURRENT_PAGE_ID:
                             continue
 
-                        await process_order(comment_text, fb_user_id, fb_user_name, background_tasks, comment_id, token=None, base_url=base_url)
+                        result = await process_order(comment_text, fb_user_id, fb_user_name, background_tasks, comment_id, token=None, base_url=base_url)
+                        if result.get("status") == "missing_code":
+                            config.LAST_EVENTS.insert(0, {
+                                "time": "warn", 
+                                "content": f"⚠️ 未知代號: {comment_text}",
+                                "rejection": f"代號不在字典中: {comment_text}"
+                            })
+                            await save_events()
             
             elif "messaging" in entry:
                 for msg_event in entry["messaging"]:
@@ -176,13 +183,19 @@ async def process_webhook_data(data: Dict, background_tasks: BackgroundTasks, is
                         if attachments:
                             background_tasks.add_task(handle_admin_secretarial_work, data, background_tasks, recipient_id)
                         elif msg_text:
-                            await process_order(msg_text, recipient_id, "Messenger User", background_tasks, mid, token=None, base_url=base_url)
+                            result = await process_order(msg_text, recipient_id, "Messenger User", background_tasks, mid, token=None, base_url=base_url)
+                            if result.get("status") == "missing_code":
+                                config.LAST_EVENTS.insert(0, {"time": "warn", "content": f"⚠️ 私訊未知代號: {msg_text}"})
+                                await save_events()
                         continue
 
                     if attachments:
                         background_tasks.add_task(handle_admin_secretarial_work, data, background_tasks)
                     else:
-                        await process_order(msg_text, sender_id, "Messenger User", background_tasks, mid, token=None, base_url=base_url)
+                        result = await process_order(msg_text, sender_id, "Messenger User", background_tasks, mid, token=None, base_url=base_url)
+                        if result.get("status") == "missing_code":
+                            config.LAST_EVENTS.insert(0, {"time": "warn", "content": f"⚠️ 私訊未知代號: {msg_text}"})
+                            await save_events()
 
     await save_events()
     return {"status": "success", "simulated": is_simulated}

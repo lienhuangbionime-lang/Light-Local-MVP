@@ -235,9 +235,9 @@
         "timestamp": "2026-03-12T04:46:00+08:00",
         "event": "3-Day Sprint Review & Solution Roadmap",
         "type": "SYNC",
-        "description": "?��? 2026-03-09 ~ 2026-03-11 三日?�發：庫存�?�?FIFO+多代???�雲?��?步�??�、自?�系統、�??�鏡?�恢復、Auto-Harvest?�Meta API v25.0 ?��??�核心�?題�??�地?�雲端�??��?一?�。�?�?P1：�?得永�?FB Token + ?��?存�?權。P2：Harvest ??Zustand M5 + Store 結�?設�???,
+        "description": "?´å? 2026-03-09 ~ 2026-03-11 ä¸æ¥?ç¼ï¼åº«å­å?ä½?FIFO+å¤ä»£???é²?°å?æ­¥å??¸ãèª?ç³»çµ±ãè??®é¡?æ¢å¾©ãAuto-Harvest?Meta API v25.0 ?ç??æ ¸å¿å?é¡ï??¬å°?é²ç«¯ç??ä?ä¸?´ãå?çº?P1ï¼å?å¾æ°¸ä¹?FB Token + ?²é?å­å?æ¬ãP2ï¼Harvest ??Zustand M5 + Store çµæ?è¨­è???,
         "impact": "High - Established transparency and roadmap alignment across 3-day sprint.",
-        "reflection": "?�地?�步（sync_products）是?�個系統�??�弱?�環節?�只要本?�設定�??��??�推?��??�?�雲端�?輯都?�盲?�。未來�??�慮??Auto-Harvest 流�??�入?��?步確認」�??�護步�???
+        "reflection": "?²å°?æ­¥ï¼sync_productsï¼æ¯?´åç³»çµ±æ??å¼±?ç°ç¯?åªè¦æ¬?°è¨­å®æ??æ??æ¨?ï???é²ç«¯é?è¼¯é½?¯ç²?ãæªä¾æ??æ®??Auto-Harvest æµç?? å¥?å?æ­¥ç¢ºèªãç??²è­·æ­¥é???
     },
     {
         "timestamp": "2026-03-17T02:30:00+08:00",
@@ -245,7 +245,7 @@
         "type": "EVOLUTION_FIX",
         "description": "Resolved critical AI Secretary parsing failures by switching to gemini-1.5-flash and fixed Webhook non-responsiveness (CURRENT_PAGE_ID NameError). Implemented 'Admin Messaging Trigger' (A+1 from Inbox) and 'Checkout AI Photo-Fill' (Extracting details from screenshots directly on the checkout page).",
         "impact": "Critical - Restored core automation and significantly improved admin-to-order workflow efficiency.",
-        "reflection": "The NameError on CURRENT_PAGE_ID was a sign of 'Variable Drift'?�a variable was used in production paths (webhook) but only initialized in health-check paths. Mission-critical state must be globally guaranteed at boot. The pivot to Gemini 1.5 Flash for JSON-first tasks is now the standard for low-latency extraction."
+        "reflection": "The NameError on CURRENT_PAGE_ID was a sign of 'Variable Drift'?a variable was used in production paths (webhook) but only initialized in health-check paths. Mission-critical state must be globally guaranteed at boot. The pivot to Gemini 1.5 Flash for JSON-first tasks is now the standard for low-latency extraction."
     },
     {
         "timestamp": "2026-03-18T00:58:00+08:00",
@@ -259,5 +259,20 @@
         "description": "Formalized the 'UI-First Testing' rule in HUMAN_AI_AGREEMENT.md after identifying a critical gap between API-only verification and user UI-flow reality during dictionary sync refactoring.",
         "impact": "High - Guaranteed alignment between AI backend logic and user frontend operations.",
         "reflection": "Testing in isolation (Python scripts) creates a false sense of security. Future verification must trace from UI triggers (live.tsx) to backend processing (main.py) to ensure data structure and endpoint parity."
+    },
+    {
+        "timestamp": "2026-03-19T23:20:00+08:00",
+        "event": "AI Link Fix & Secretary Function Recovery",
+        "type": "EVOLUTION_FIX",
+        "description": "Resolved 'AI link issue' by appending secure checkout URLs to AI secretary replies. Fixed critical signature mismatch in handle_admin_secretarial_work that caused server-side crashes. Ensured N+1 and Chinese character recognition is stable.",
+        "impact": "Critical - Restored DM-to-Checkout conversion and system stability.",
+        "reflection": "A broken function signature in the webhook path proved that 'silent failures' in background tasks can go unnoticed without proper logging. The fix ensures every AI extraction results in a clickable customer action."
+    },
+    {
+        "timestamp": "2026-03-19T23:25:00+08:00",
+        "event": "OpenClaw Ecosystem & Skill Integration",
+        "type": "ARCH_EVOLUTION",
+        "description": "Installed 'get-api-docs' skill in .claude/skills and proposed a multi-project integration plan for OpenClaw. Established the 'Local-First + GitHub + Web-Search' security boundary to protect API keys.",
+        "impact": "High - Scaled AI assistance to all projects under C:\\Users\\lien.huang while maintaining strict privacy defaults."
     }
-]
+]

@@ -9,6 +9,7 @@ import backend.config as config
 from backend.database.firebase import save_orders, sync_state_from_cloud, acquire_lock, save_events
 from backend.services.ai_service import ask_gemini_secretary, ask_gemma_receptionist
 from backend.services.fb_service import send_messenger_link
+from backend.core.security import generate_order_signature
 # from backend.services.store_service import resolve_store_info  <-- Move to local import
 
 def normalize_text(text: str) -> str:
@@ -51,7 +52,8 @@ def get_price_from_rule(rule_str: str, quantity: int) -> int:
 
 def parse_comment(text: str) -> Dict:
     normalized = normalize_text(text)
-    pattern = r'([A-Za-z0-9]{1,5})\s*([^\w\s]|[\+\uff0b\u2795])+\s*(\d+)'
+    # [FIX] 支援中文字代號 (A-Z, 0-9, 以及常見中文字)
+    pattern = r'([A-Za-z0-9\u4e00-\u9fa5]{1,5})\s*([^\w\s]|[\+\uff0b\u2795])+\s*(\d+)'
     matches = re.findall(pattern, normalized)
     
     items = []
@@ -138,15 +140,30 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
         
         if parsing_result["has_unknown_code"]:
             if comment_id: config.PROCESSED_COMMENT_IDS.add(comment_id)
-            return {"status": "missing_code", "msg": "Matches found but codes are not in pool"}
+            return {"status": "missing_code", "msg": "Matches found but codes are not in pool", "raw": message_text}
             
         return {"status": "no_match", "msg": "No valid product codes found in comment"}
     finally:
         if comment_id and comment_id in config.CURRENTLY_PROCESSING_IDS:
             config.CURRENTLY_PROCESSING_IDS.remove(comment_id)
 
-async def handle_admin_secretarial_work(sender_id: str, text_content: Optional[str] = None, image_url: Optional[str] = None, target_psid: Optional[str] = None):
-    """處理管理員轉傳來的秘書工作 (導入 Tiered AI: Gemma 報到 -> Gemini 決策)"""
+async def handle_admin_secretarial_work(webhook_data: dict, background_tasks: BackgroundTasks, target_psid_override: Optional[str] = None):
+    """處理管理員轉傳來的秘書工作 (修正後的正確入口)"""
+    # 從 Webhook 資料中提取必要資訊 (假設是傳入 entry[0].messaging[0])
+    entry = webhook_data.get("entry", [{}])[0]
+    messaging = entry.get("messaging", [{}])[0]
+    
+    sender_id = messaging.get("sender", {}).get("id")
+    message_data = messaging.get("message", {})
+    text_content = message_data.get("text")
+    attachments = message_data.get("attachments", [])
+    
+    # 決定誰是真正的目標客戶 (客戶 PSID)
+    # 如果是管理員回覆 (target_psid_override 有值)，則目標是該 recipient
+    target_psid = target_psid_override if target_psid_override else sender_id
+    
+    # 判斷是否有圖片
+    has_image = any(a.get("type") == "image" for a in attachments)
     
     # 0. 關鍵字過濾：如果是要求「統計」或「名單」
     if text_content and any(kw in text_content for kw in ["統計", "名單", "整理", "報表"]):
@@ -192,10 +209,10 @@ async def handle_admin_secretarial_work(sender_id: str, text_content: Optional[s
     image_b64 = None
 
     # --- 第二階段：判斷是否需要提升至 Gemini 主管 (高智慧 / 訂單解析 / 圖片掃描) ---
-    should_escalate = has_image or (recep_reply and (recep_reply.get("escalate") or recep_reply.get("is_order")))
+    # 修正：之前這裡有個 undefined 的 recep_reply，現在只要有文字或圖片就嘗試解析
+    should_escalate = has_image or (text_content and len(text_content.strip()) > 0)
     
     if not should_escalate:
-        # 如果連 Gemma 都沒把握且沒影像，就當作普通對話不處理
         return
 
     # 下載圖片 (如果有)
@@ -298,11 +315,15 @@ async def handle_admin_secretarial_work(sender_id: str, text_content: Optional[s
         
         summary = "\n".join([f"- {i.product_code} x{i.quantity} ({i.product_name})" for i in valid_items])
         if target_psid:
-            reply_text = f"🤖 秘書自動補單 (對象: {buyer_name})\n單號: {order_id}\n解析成功！已反映至您的直播後台。\n👉 客戶資料：{phone or '未留'}, {shipping or '未留'}"
+            signature = generate_order_signature(order_id)
+            checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?s={signature}"
+            reply_text = f"🤖 秘書自動補單 (對象: {buyer_name})\n單號: {order_id}\n解析成功！已反映至您的直播後台。\n👉 客戶資料：{phone or '未留'}, {shipping or '未留'}\n🔗 結帳連結：{checkout_url}"
             # 原本這裡會跳過 CURRENT_PAGE_ID，但我們希望管理員在收件匣也能看到 AI 的確認
-            await send_messenger_link(sender_id, "None", [], text=reply_text)
+            await send_messenger_link(sender_id, order_id, valid_items, text=reply_text)
             config.LAST_EVENTS.insert(0, {"time": "AI_OK", "content": f"🤖 秘書自動補單: {buyer_name}"})
             await save_events()
         else:
-            reply_text = f"✅ 秘書已建檔 (單號: {order_id})\n客戶：{buyer_name}\n電話：{phone or '未辨識'}\n門市：{shipping or '未辨識'}\n品項：\n{summary}"
-            await send_messenger_link(sender_id, "None", [], text=reply_text)
+            signature = generate_order_signature(order_id)
+            checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?s={signature}"
+            reply_text = f"✅ 秘書已建檔 (單號: {order_id})\n客戶：{buyer_name}\n電話：{phone or '未辨識'}\n門市：{shipping or '未辨識'}\n品項：\n{summary}\n\n👉 請點擊連結確認資料：\n{checkout_url}"
+            await send_messenger_link(sender_id, order_id, valid_items, text=reply_text)
