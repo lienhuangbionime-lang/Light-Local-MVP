@@ -125,14 +125,18 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 
 【JSON 格式要求】：
 {{
-  "buyer_name": "買家姓名 (從對話標題或內容抓取)",
-  "phone": "電話 (10 碼數字)",
-  "shipping_info": "7-11 門市資訊。規則：1. 有店號優先。2. 只有店名即填店名回傳。3. 絕對禁止地址。",
+  "buyer_name": "買家姓名 (規則：1. 若截圖最上方有對話者名稱，請優先提取。2. 若有『姓名/門市/手機』格式則提取第一項)",
+  "phone": "電話 (10 碼數字，如 0972907584)",
+  "shipping_info": "7-11 門市資訊。規則：1. 若有 6 位數【店號】則填寫。2. 若截圖包含 Google Maps 或門市照片，請提取顯眼的【店名】(如：旗山旗力)。3. 絕對禁止地址。",
   "items": [
     {{ "product_code": "代號", "quantity": 數量 }}
   ],
   "is_duplicate": false
 }}
+
+【提取範例】：
+截圖頂部顯示「王小明」，內容有 7-11 門市圖與手機。
+輸出：{{ "buyer_name": "王小明", "phone": "0972907584", "shipping_info": "旗山旗力", "items": [] }}
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     

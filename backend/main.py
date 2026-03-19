@@ -36,39 +36,24 @@ from backend.database.firebase import (
     load_orders, load_events, save_orders, clear_orders_on_cloud, 
     sync_state_from_cloud, sync_orders_from_cloud, save_events
 )
-# from backend.services.fb_service import (
-#     process_webhook_data, send_messenger_link, subscribe_page_to_app, save_fb_config, load_fb_config
-# )
-# from backend.services.order_service import process_order, handle_admin_secretarial_work
+from backend.services.fb_service import (
+    process_webhook_data, send_messenger_link, subscribe_page_to_app, save_fb_config, load_fb_config
+)
+from backend.services.order_service import process_order, handle_admin_secretarial_work
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """管理全域資源生命週期"""
     print(f"[SYSTEM] 啟動背景同步任務... (Instance: {INSTANCE_ID})")
-    
-    async def init_task():
-        try:
-            # 1. 初始化 Firebase (模組層級已改為延遲載入以防啟動卡死)
-            from backend.database.firebase import init_firebase
-            init_firebase()
-            
-            # 2. 載入門市索引 (背景執行，不阻塞 HTTP 服務)
-            from backend.services.store_service import _load_stores_into_memory
-            _load_stores_into_memory()
-            
-            # 3. 異步載入雲端資料
-            await asyncio.gather(load_orders(), load_events())
-            
-            if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
-                from backend.services.fb_service import subscribe_page_to_app
-                await subscribe_page_to_app(config.PAGE_ACCESS_TOKEN)
-            print("[SYSTEM] 初始化完成")
-        except Exception as e:
-            print(f"[ERROR] 初始化失敗: {e}")
-
-    # 使用 create_task 確保不阻塞啟動
-    print(f"[SYSTEM] Create init_task... (Time: {time.time()})")
-    asyncio.create_task(init_task())
+    # [CRITICAL] Await loading to ensure memory is populated before requests arrive
+    try:
+        await asyncio.gather(load_orders(), load_events())
+        if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
+            from backend.services.fb_service import subscribe_page_to_app
+            await subscribe_page_to_app(config.PAGE_ACCESS_TOKEN)
+        print("[SYSTEM] 初始化完成")
+    except Exception as e:
+        print(f"[ERROR] 初始化失敗: {e}")
     yield
     print("[SYSTEM] 正在關閉全域連線...")
     await global_client.aclose()
@@ -79,7 +64,7 @@ app = FastAPI(title="EchoOrder Buffer Gateway", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -97,26 +82,14 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
-    try:
-        from backend.database.firebase import db
-        return {
-            "status": "ok",
-            "version": "2.2.2 (Stability Fix)",
-            "instance_id": INSTANCE_ID,
-            "is_live": config.IS_LIVE_ACTIVE,
-            "firebase_connected": db is not None,
-            "stores_loaded": len(config.ACTIVE_PRODUCTS) > 0 or bool(config.CONFIG_CACHE.get("last_sync")),
-            "products_count": len(config.ACTIVE_PRODUCTS),
-            "has_fb_token": bool(config.PAGE_ACCESS_TOKEN and config.PAGE_ACCESS_TOKEN != "YOUR_FB_PAGE_TOKEN"),
-            "has_ai_key": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
-            "env": {
-                "PORT": os.environ.get("PORT"),
-                "RENDER": bool(os.environ.get("RENDER")),
-                "PYTHONPATH": os.environ.get("PYTHONPATH")
-            }
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e), "version": "2.2.2"}
+    return {
+        "status": "ok",
+        "version": "2.1.0 (Modular Refactor)",
+        "instance_id": INSTANCE_ID,
+        "is_live": config.IS_LIVE_ACTIVE,
+        "products_count": len(config.ACTIVE_PRODUCTS),
+        "has_ai_key": bool(config.GEMINI_API_KEY)
+    }
 
 @app.get("/webhook/fb")
 async def verify_fb_webhook(request: Request):
@@ -127,7 +100,6 @@ async def verify_fb_webhook(request: Request):
 
 @app.post("/webhook/fb")
 async def fb_webhook(request: Request, background_tasks: BackgroundTasks):
-    from backend.services.fb_service import process_webhook_data
     try:
         data = await request.json()
         return await process_webhook_data(data, background_tasks)
@@ -243,23 +215,6 @@ async def clear_orders_endpoint(request: Request):
     deleted = await clear_orders_on_cloud()
     return {"status": "success", "count": deleted}
 
-@app.post("/api/seller/reset_system")
-async def reset_system(request: Request, data: Dict):
-    """徹底重設系統 (包含代號表與訂單)"""
-    sig = request.headers.get("X-Admin-Signature")
-    ts = request.headers.get("X-Admin-Timestamp")
-    if not verify_admin_signature(sig, ts):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    
-    config.ORDER_POOL.clear()
-    config.PROCESSED_COMMENT_IDS.clear()
-    if data.get("deep_reset"):
-        config.ACTIVE_PRODUCTS.clear()
-    
-    await save_orders(save_config=True, fields=["active_products", "processed_comment_ids"])
-    await clear_orders_on_cloud()
-    return {"status": "success", "message": "系統已成功歸零"}
-
 @app.get("/api/debug/time")
 async def get_server_time():
     """檢查伺服器時間與 Secret 狀態 (Debug 用)"""
@@ -308,14 +263,15 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         if not image_b64:
              return {"status": "error", "message": "未接收到圖片資料"}
 
-        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片中【精確】提取收件資訊。
+        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片或文字中【精確】提取收件資訊。
 請【嚴格】回傳以下 JSON 格式：
 {
-  "buyer_name": "完整的收件人姓名 (優先抓取截圖頂部的對話對象名稱)",
+  "buyer_name": "買家姓名 (規則：1. 若截圖最上方有對話對象，請優先提取。2. 若有『姓名/門市/手機』則提取姓名)",
   "phone": "10 碼電話 (如 0972907584)",
-  "shipping_info": "7-11 門市資訊。規則：1. 如果截圖中有明顯的 6 位數【店號】，請填寫店號。2. 如果沒有店號但有【門市名稱】(如：旗山旗力)，請『直接填寫門市名稱』，不要隨意猜測 6 位數。3. 絕對不要回傳地址。4. 如果只有店名，請僅回傳店名，後端將自動查詢店號。"
+  "shipping_info": "7-11 門市資訊。規則：1. 有店號填店號。2. 包含 Google Maps 或照片則提取顯眼【店名】。3. 禁止地址。"
 }
-注意：如果你不確定店號，回傳「門市名稱」比回傳錯誤的數字更好。絕對禁止回傳「店名 (店號)」這種格式，請擇一。"""
+範例輸入：[包含頂部名稱 Pham Hoai 與 旗山旗力門市 的截圖]
+範例輸出：{"buyer_name": "Pham Hoai", "phone": "0972907584", "shipping_info": "旗山旗力"}"""
         
         extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
         
@@ -343,32 +299,6 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         print(f"[AI_FILL] 處理崩潰: {e}")
         return {"status": "error", "message": f"伺服器處理異常: {str(e)}"}
 
-@app.post("/api/seller/pull_live_comments")
-async def pull_comments_endpoint(data: Dict, background_tasks: BackgroundTasks):
-    """主動拉取 FB 直播留言 (Polling 模式)"""
-    from backend.services.fb_service import pull_live_comments
-    token = data.get("token") or config.PAGE_ACCESS_TOKEN
-    return await pull_live_comments(token, background_tasks)
-
-@app.post("/api/seller/orders/restore")
-async def restore_orders_endpoint(data: Dict):
-    """自癒功能：從前端恢復丟失的狀態"""
-    count = 0
-    if "orders" in data:
-        for o_data in data["orders"]:
-            try:
-                # 簡單轉換 dictionary 為 Order 對象
-                new_order = Order(**o_data)
-                config.ORDER_POOL[new_order.order_id] = new_order
-                count += 1
-            except Exception:
-                continue
-    
-    if "processed_comment_ids" in data:
-        config.PROCESSED_COMMENT_IDS.update(data["processed_comment_ids"])
-    
-    return {"status": "success", "restored": count}
-
 @app.post("/api/checkout/{order_id}/confirm")
 async def confirm_checkout(order_id: str, data: Dict, s: Optional[str] = None):
     if not verify_order_signature(order_id, s):
@@ -390,14 +320,6 @@ async def confirm_checkout(order_id: str, data: Dict, s: Optional[str] = None):
 async def get_debug_events():
     return config.LAST_EVENTS
 
-@app.get("/api/debug/products")
-async def get_debug_products():
-    """查看目前載入的商品字典"""
-    return {
-        "product_count": len(config.ACTIVE_PRODUCTS),
-        "active_products": config.ACTIVE_PRODUCTS
-    }
-
 @app.get("/api/admin/config_check")
 async def check_config(admin_secret: Optional[str] = None):
     # 此處可供使用者在線上檢查環境變數是否設定正確
@@ -409,17 +331,6 @@ async def check_config(admin_secret: Optional[str] = None):
         "PAGE_ACCESS_TOKEN": "SET" if config.PAGE_ACCESS_TOKEN else "MISSING ❌",
         "INFO": "請確保在 Render.com 後台的 Environment Variables 正確設定了這些值。"
     }
-
-@app.post("/api/admin/sync_official_stores")
-@app.get("/api/admin/sync_official_stores")
-async def sync_stores_endpoint(background_tasks: BackgroundTasks, admin_secret: Optional[str] = None, force: bool = False):
-    """手動觸發全台 7-11 門市同步任務 (僅更新新增門市，或使用 force=true 強制全部重刷)"""
-    if admin_secret != config.ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Unauthorized")
-    
-    from backend.services.store_service import sync_official_stores_task
-    background_tasks.add_task(sync_official_stores_task, force=force)
-    return {"status": "success", "message": f"全台門市同步任務已在背景啟動 (Force={force})。"}
 
 @app.delete("/api/debug/events")
 async def clear_events():
@@ -504,28 +415,32 @@ async def recover_order(data: Dict):
 async def export_orders():
     """
     導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel
-    欄位參考自：賣貨便_訂單匯入結果_2603191084664270.xlsm
+    格式：收件人姓名, 收件人手機, 取貨門市店號, 訂單金額, 商品名稱, 收件人Email, 備註
     """
-    import io
-    import time
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
     worksheet = workbook.add_worksheet()
     
-    # [V2.2.0] 根據 7-11 賣貨便最新官方範本格式
-    headers = ["＊取件人姓名", "＊取件人手機", "＊取件門市", "* 溫層", "＊商品", "＊訂單金額", "＊運費金額", "買家下訂日期", "商品備註"]
-    header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'bg_color': '#DDEBF7'})
-    
+    # 賣貨便官方欄位
+    headers = ["收件人姓名", "收件人手機", "取貨門市店號", "訂單金額", "商品名稱", "收件人Email", "備註"]
     for i, h in enumerate(headers): 
-        worksheet.write(0, i, h, header_fmt)
+        worksheet.write(0, i, h)
     
     row = 1
-    # 使用 list 避免在迭代時字典大小變更
-    for o in list(ORDER_POOL.values()):
+    for o in ORDER_POOL.values():
         if o.created_at < config.SESSION_START_TIME: continue
         if o.status != "CONFIRMED" and o.status != "HARVESTED": continue
         
-        # 1. 提取 6 碼店號 (必須是 6 碼)
+        # 1. 計算總金額 (商品 + 運費)
+        total_items_price = sum((item.price or 0) * item.quantity for item in o.items)
+        total_qty = sum(item.quantity for item in o.items)
+        is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
+        total_amount = int(round(total_items_price + (0 if is_free else config.SHIPPING_FEE)))
+        
+        # 2. 彙整商品名稱
+        items_summary = ", ".join([f"{i.product_code}x{i.quantity}" for i in o.items])
+        
+        # 3. 提取 6 碼店號 (Regex 找連續 6 位數字)
         store_id = ""
         if o.shipping_info:
             import re
@@ -533,44 +448,17 @@ async def export_orders():
             if match:
                 store_id = match.group(0)
             else:
-                # 嘗試透過店名反查
-                from backend.services.store_service import resolve_store_info
-                import asyncio
-                try:
-                    # 在生命週期內反查
-                    resolved = await resolve_store_info(o.shipping_info)
-                    match = re.search(r'\d{6}', resolved)
-                    if match: store_id = match.group(0)
-                except: pass
-
-        # 2. 商品項格式化 (品名 x 數量)
-        items_summary = ", ".join([f"{i.product_name or i.product_code} x {i.quantity}" for i in o.items])
+                # 若找不到 6 碼店號，則保留完整資訊供賣家手動修改，不隨意切斷
+                store_id = o.shipping_info
         
-        # 3. 費用計算
-        total_items_price = sum((item.price or 0) * item.quantity for item in o.items)
-        total_qty = sum(item.quantity for item in o.items)
-        is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
-        shipping_fee = 0 if is_free else config.SHIPPING_FEE
-        
-        # 寫入資料
-        worksheet.write(row, 0, o.buyer_name or o.fb_user_name)     # ＊取件人姓名
-        worksheet.write(row, 1, o.phone or "")                      # ＊取件人手機
-        worksheet.write(row, 2, store_id)                           # ＊取件門市
-        worksheet.write(row, 3, "常溫")                             # * 溫層
-        worksheet.write(row, 4, items_summary)                      # ＊商品
-        worksheet.write(row, 5, total_items_price)                  # ＊訂單金額
-        worksheet.write(row, 6, shipping_fee)                       # ＊運費金額
-        worksheet.write(row, 7, time.strftime("%Y/%m/%d", time.localtime(o.created_at)) if o.created_at else "") # 下訂日期
-        worksheet.write(row, 8, f"OID: {o.order_id}")                # 備註
+        worksheet.write(row, 0, o.buyer_name or o.fb_user_name)     # 收件人姓名
+        worksheet.write(row, 1, o.phone or "")                      # 收件人手機
+        worksheet.write(row, 2, store_id)                           # 取貨門市店號
+        worksheet.write(row, 3, total_amount)                       # 訂單金額
+        worksheet.write(row, 4, items_summary)                      # 商品名稱
+        worksheet.write(row, 5, "")                                 # 收件人Email (空)
+        worksheet.write(row, 6, o.order_id)                         # 備註 (帶入單號)
         row += 1
-    
-    workbook.close()
-    output.seek(0)
-    return StreamingResponse(
-        output, 
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=711_myship_orders.xlsx"}
-    )
     
     workbook.close()
     output.seek(0)

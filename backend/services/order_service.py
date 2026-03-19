@@ -99,6 +99,35 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
         valid_items = parsing_result["items"]
         
         if valid_items:
+            # --- [AI ENHANCEMENT] 嘗試從完整訊息中提取 姓名/手機/門市 (MyShip 格式) ---
+            potential_contact_info = False
+            # 判斷是否包含斜線或長度較長 (可能包含姓名/手機/門市)
+            if "/" in message_text or len(message_text) > 15:
+                potential_contact_info = True
+            
+            buyer_name = user_name
+            phone = None
+            shipping_info = None
+
+            if potential_contact_info:
+                print(f"[AI] 偵測到複雜留言，試圖提取聯絡資訊: {message_text}")
+                # 呼叫秘書 AI 進行解析
+                extracted = await ask_gemini_secretary(message_text)
+                if extracted and isinstance(extracted, dict):
+                    buyer_name = extracted.get("buyer_name") or user_name
+                    phone = extracted.get("phone")
+                    raw_shipping = extracted.get("shipping_info")
+                    
+                    if raw_shipping:
+                        from backend.services.store_service import resolve_store_info
+                        shipping_info = await resolve_store_info(raw_shipping)
+                    
+                    if phone:
+                        # 清理非數字內容
+                        phone = "".join(filter(str.isdigit, str(phone)))
+            
+            # -------------------------------------------------------------------
+
             for item in valid_items:
                 code_upper = item.product_code.upper()
                 product_data = config.ACTIVE_PRODUCTS.get(code_upper, "未知商品")
@@ -106,7 +135,6 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
                 if isinstance(product_data, dict):
                     item.product_name = product_data.get("name", "未命名商品")
                     price_rule = product_data.get("price_rule", "")
-                    # 計算總價後除以數量，得到平均單價存入 OrderItem (以相容舊系統)
                     total_p = get_price_from_rule(price_rule, item.quantity)
                     item.price = total_p / item.quantity if item.quantity > 0 else 0.0
                 else:
@@ -123,6 +151,9 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
                 order_id=order_id,
                 fb_user_id=user_id,
                 fb_user_name=user_name,
+                buyer_name=buyer_name,  # 優先使用 AI 提取的姓名
+                phone=phone,            # AI 提取的手機
+                shipping_info=shipping_info, # AI 提取的門市 (已校正)
                 items=valid_items,
                 status="PENDING",
                 source_comment_id=comment_id,
@@ -249,8 +280,7 @@ async def handle_admin_secretarial_work(webhook_data: dict, background_tasks: Ba
         
         # 進行門市代號與名稱校正 (使用區域導入以防循環引用)
         from backend.services.store_service import resolve_store_info
-        resolved = resolve_store_info(raw_shipping)
-        shipping = f"{resolved['id']} {resolved['name']}" if resolved.get("id") else raw_shipping
+        shipping = await resolve_store_info(raw_shipping)
         
         ai_items = extracted.get("items", [])
         
