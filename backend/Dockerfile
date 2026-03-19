@@ -8,10 +8,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 WORKDIR /app
 
 # 複製依賴文件
-COPY pyproject.toml uv.lock ./
+COPY requirements.txt ./
 
-# 安裝依賴 (不使用虛擬環境，直接安裝在系統中以減少映像檔大小)
-RUN uv sync --frozen --no-cache
+# 安裝依賴 (使用 uv pip 以加速安裝，--system 表示安裝到系統環境)
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # 複製程式碼
 COPY . .

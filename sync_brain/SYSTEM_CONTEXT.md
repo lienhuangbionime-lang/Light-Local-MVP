@@ -32,8 +32,10 @@
 - **M6 銷售與歸檔 (Sales & Archiving)**: 
   - **分段存儲**: 活躍連結存於 `/orders` (Staging)，買家確認後立刻移入 `/archived_orders` (Result)。
   - **累計併單**: 封存區支援跨場次長期累積，Excel 匯出時才執行全量對帳。
-- **M7 設定與導出 (Export & Settings)**: 
+- **M7 設定與物流 (Logistics & Settings)**: 
   - **三員合一**: 併單規則為 (電話 + 門市 + 姓名) 完全相符。
+  - **自定義運費**: 提供 `BUYER_SHIPPING_FEE` (預設 50) 與 `PLATFORM_SHIPPING_FEE` (預設 38) 配置。
+  - **金額拆分**: Excel 導出時自動執行 `(總額 - 平台費)` 與 `平台費` 的拆分邏輯。
   - **巨集防護**: 使用 `openpyxl` 確保 `.xlsm` 模板功能與 7-11 匯入巨集不受損。
 
 ## 🚦 開發原則與限制
@@ -51,6 +53,8 @@
 1. **禁止 Emojis**: 後端 Python `print()` 絕對禁止使用 Emoji，避免 Windows `cp950` 編碼崩潰。
 2. **禁止 localhost**: 在 Next.js 請求或後端呼叫中，必須使用 `127.0.0.1` 取代 `localhost`，避免 Windows IPv6 造成的連線延遲/斷開。
 3. **路徑修正**: 雲端部署 (Render) 若發生 `ModuleNotFoundError`，必須在 `main.py` 第 1 行注入 `sys.path` 修正。
+4. **直播 UI 淨化**: 直播介面（Live Page）必須保持極簡，禁止在 Diagnostic Console 放置生產環境不必要的測試按鈕（僅保留清空日誌）。
+5. **運費延遲觸發**: 運費僅在「Excel 導出」階段計算與加入，結帳頁面應保持純粹的商品金額確認。
 
 ---
 **Last Updated**: 2026-03-20 | **Status**: Phase 5 Advanced Order Life-cycle Deployed (Archive-Split + Triplet Merge)

@@ -319,6 +319,14 @@
         "description": "Resolved Render 502/503 startup hangs via non-blocking initialization (Lazy Loading). Fixed AI Secretary 'Silent Failure' by adding customer PSID link delivery. Enhanced /api/health with FB Token monitoring.",
         "impact": "Critical - Guaranteed system reachability and restored customer checkout conversion path.",
         "reflection": "Startup time is the #1 killer on serverless/free tiers. Backgrounding JSON loads and Firebase init was necessary to pass health checks. For messaging, administrative shortcuts that skip the customer delivery are a major UX roadblock."
+    },
+    {
+        "timestamp": "2026-03-20T04:45:00+08:00",
+        "event": "Logistics Configurability & Live UI Sanitization",
+        "type": "EVOLUTION_CONFIG",
+        "description": "Implemented dynamic shipping fee management (50 TWD Buyer / 38 TWD Platform default) with Settings UI integration. Sanitized the Live Sales interface by removing all shipping fee displays and redundant diagnostic test buttons. Fixed the 'Clear Event Logs' persistence issue.",
+        "impact": "High - Unified logistics strategy at the Excel export layer and achieved a production-ready, distraction-free live stream UI.",
+        "reflection": "Moving shipping logic to the final export phase ensures the front-end checkout flow remains ultra-simple. UI minimalism in the live console reduces operational cognitive load for the seller."
     }
 ]
 

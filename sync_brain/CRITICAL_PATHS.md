@@ -12,6 +12,7 @@
 | **API Route (`/api/ocr/route.ts`)** | 單據辨識 | 這是唯一的伺服端點。若因逾時、解析錯誤或意外導致照片實體留存，將違反「閱後即焚」原則，或導致辨識流程中斷。 |
 | **M3 模組 (`digitize.tsx`)** | 成本源頭 | 「外幣單價 × M2 批次匯率」的數學計算不可有誤差。若算錯，後續庫存利潤將全盤皆錯。 |
 | **M4 模組 (`shipments.tsx`)** | 最終成本攤提 | 若「按重量比例攤提」的演算法寫錯，會影響最終 Landed Cost，導致服飾業定價策略失準。 |
+| **運費配置 (`config.py` / `settings.tsx`)** | Excel 導出對帳 | `BUYER_SHIPPING_FEE` 與 `PLATFORM_SHIPPING_FEE` 直接參與 Excel F/G 欄位的金額加減運算。若值不正確，會導致 7-11 匯入金額與實收金額不符。 |
 
 ---
 
