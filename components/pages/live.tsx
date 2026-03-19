@@ -498,12 +498,11 @@ export function LivePage() {
                 const basePrice = it.suggestedPrice ? Number(it.suggestedPrice) : 0;
                 let priceRule = it.suggestedPrice || "";
                 
-                // If it's just a single number or empty, expand it to 3 tiers
+                // If it's just a single number or empty, expand it to 2 tiers (1-2 items only)
                 if (!priceRule.includes(":") && (basePrice > 0 || it.localCostLanded > 0)) {
                     const p1 = basePrice > 0 ? basePrice : Math.round((it.localCostLanded + 90) / 5) * 5;
                     const p2 = Math.round((p1 * 2 * 0.9) / 5) * 5;
-                    const p3 = Math.round((p1 * 3 * 0.8) / 5) * 5;
-                    priceRule = `1:${p1}, 2:${p2}, 3:${p3}`;
+                    priceRule = `1:${p1}, 2:${p2}`;
                 }
                 
                 uniqueItems[name] = { 

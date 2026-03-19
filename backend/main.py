@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
             print(f"[ERROR] 初始化失敗: {e}")
 
     # 使用 create_task 確保不阻塞啟動
+    print(f"[SYSTEM] Create init_task... (Time: {time.time()})")
     asyncio.create_task(init_task())
     yield
     print("[SYSTEM] 正在關閉全域連線...")
@@ -96,11 +97,19 @@ async def root():
 
 @app.get("/api/health")
 async def health_check():
+    from backend.database.firebase import db
     return {
         "status": "ok",
-        "version": "2.1.7 (Prod Mode)",
+        "version": "2.2.0 (Stable Path)",
         "instance_id": INSTANCE_ID,
         "is_live": config.IS_LIVE_ACTIVE,
+        "env": {
+            "PORT": os.environ.get("PORT"),
+            "RENDER": bool(os.environ.get("RENDER")),
+            "PYTHONPATH": os.environ.get("PYTHONPATH")
+        },
+        "firebase_connected": db is not None,
+        "stores_loaded": len(config.ACTIVE_PRODUCTS) > 0 or bool(config.CONFIG_CACHE.get("last_sync")),
         "products_count": len(config.ACTIVE_PRODUCTS),
         "has_ai_key": bool(config.GEMINI_API_KEY)
     }
@@ -299,9 +308,9 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
 {
   "buyer_name": "完整的收件人姓名 (優先抓取截圖頂部的對話對象名稱)",
   "phone": "10 碼電話 (如 0972907584)",
-  "shipping_info": "7-11 門市資訊。規則：1. 如果截圖中有明顯的 6 位數【店號】，請填寫店號。2. 如果沒有店號但有【門市名稱】(如：旗山旗力)，請『直接填寫門市名稱』，不要隨意猜測 6 位數。3. 絕對不要回傳地址。"
+  "shipping_info": "7-11 門市資訊。規則：1. 如果截圖中有明顯的 6 位數【店號】，請填寫店號。2. 如果沒有店號但有【門市名稱】(如：旗山旗力)，請『直接填寫門市名稱』，不要隨意猜測 6 位數。3. 絕對不要回傳地址。4. 如果只有店名，請僅回傳店名，後端將自動查詢店號。"
 }
-注意：如果你不確定店號，回傳「門市名稱」比回傳錯誤的數字更好。"""
+注意：如果你不確定店號，回傳「門市名稱」比回傳錯誤的數字更好。絕對禁止回傳「店名 (店號)」這種格式，請擇一。"""
         
         extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
         
@@ -490,32 +499,28 @@ async def recover_order(data: Dict):
 async def export_orders():
     """
     導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel
-    格式：收件人姓名, 收件人手機, 取貨門市店號, 訂單金額, 商品名稱, 收件人Email, 備註
+    欄位參考自：賣貨便_訂單匯入結果_2603191084664270.xlsm
     """
+    import io
+    import time
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
     worksheet = workbook.add_worksheet()
     
-    # 賣貨便官方欄位
-    headers = ["收件人姓名", "收件人手機", "取貨門市店號", "訂單金額", "商品名稱", "收件人Email", "備註"]
+    # [V2.2.0] 根據 7-11 賣貨便最新官方範本格式
+    headers = ["＊取件人姓名", "＊取件人手機", "＊取件門市", "* 溫層", "＊商品", "＊訂單金額", "＊運費金額", "買家下訂日期", "商品備註"]
+    header_fmt = workbook.add_format({'bold': True, 'align': 'center', 'bg_color': '#DDEBF7'})
+    
     for i, h in enumerate(headers): 
-        worksheet.write(0, i, h)
+        worksheet.write(0, i, h, header_fmt)
     
     row = 1
-    for o in ORDER_POOL.values():
+    # 使用 list 避免在迭代時字典大小變更
+    for o in list(ORDER_POOL.values()):
         if o.created_at < config.SESSION_START_TIME: continue
         if o.status != "CONFIRMED" and o.status != "HARVESTED": continue
         
-        # 1. 計算總金額 (商品 + 運費)
-        total_items_price = sum((item.price or 0) * item.quantity for item in o.items)
-        total_qty = sum(item.quantity for item in o.items)
-        is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
-        total_amount = int(round(total_items_price + (0 if is_free else config.SHIPPING_FEE)))
-        
-        # 2. 彙整商品名稱
-        items_summary = ", ".join([f"{i.product_code}x{i.quantity}" for i in o.items])
-        
-        # 3. 提取 6 碼店號 (Regex 找連續 6 位數字)
+        # 1. 提取 6 碼店號 (必須是 6 碼)
         store_id = ""
         if o.shipping_info:
             import re
@@ -523,17 +528,44 @@ async def export_orders():
             if match:
                 store_id = match.group(0)
             else:
-                # 若找不到 6 碼店號，則保留完整資訊供賣家手動修改，不隨意切斷
-                store_id = o.shipping_info
+                # 嘗試透過店名反查
+                from backend.services.store_service import resolve_store_info
+                import asyncio
+                try:
+                    # 在生命週期內反查
+                    resolved = await resolve_store_info(o.shipping_info)
+                    match = re.search(r'\d{6}', resolved)
+                    if match: store_id = match.group(0)
+                except: pass
+
+        # 2. 商品項格式化 (品名 x 數量)
+        items_summary = ", ".join([f"{i.product_name or i.product_code} x {i.quantity}" for i in o.items])
         
-        worksheet.write(row, 0, o.buyer_name or o.fb_user_name)     # 收件人姓名
-        worksheet.write(row, 1, o.phone or "")                      # 收件人手機
-        worksheet.write(row, 2, store_id)                           # 取貨門市店號
-        worksheet.write(row, 3, total_amount)                       # 訂單金額
-        worksheet.write(row, 4, items_summary)                      # 商品名稱
-        worksheet.write(row, 5, "")                                 # 收件人Email (空)
-        worksheet.write(row, 6, o.order_id)                         # 備註 (帶入單號)
+        # 3. 費用計算
+        total_items_price = sum((item.price or 0) * item.quantity for item in o.items)
+        total_qty = sum(item.quantity for item in o.items)
+        is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
+        shipping_fee = 0 if is_free else config.SHIPPING_FEE
+        
+        # 寫入資料
+        worksheet.write(row, 0, o.buyer_name or o.fb_user_name)     # ＊取件人姓名
+        worksheet.write(row, 1, o.phone or "")                      # ＊取件人手機
+        worksheet.write(row, 2, store_id)                           # ＊取件門市
+        worksheet.write(row, 3, "常溫")                             # * 溫層
+        worksheet.write(row, 4, items_summary)                      # ＊商品
+        worksheet.write(row, 5, total_items_price)                  # ＊訂單金額
+        worksheet.write(row, 6, shipping_fee)                       # ＊運費金額
+        worksheet.write(row, 7, time.strftime("%Y/%m/%d", time.localtime(o.created_at)) if o.created_at else "") # 下訂日期
+        worksheet.write(row, 8, f"OID: {o.order_id}")                # 備註
         row += 1
+    
+    workbook.close()
+    output.seek(0)
+    return StreamingResponse(
+        output, 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=711_myship_orders.xlsx"}
+    )
     
     workbook.close()
     output.seek(0)

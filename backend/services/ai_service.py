@@ -125,9 +125,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 
 【JSON 格式要求】：
 {{
-  "buyer_name": "買家姓名 (預設空字串)",
-  "phone": "電話 (預設空字串)",
-  "shipping_info": "門市名稱或店號 (預設空字串)",
+  "buyer_name": "買家姓名 (從對話標題或內容抓取)",
+  "phone": "電話 (10 碼數字)",
+  "shipping_info": "7-11 門市資訊。規則：1. 有店號優先。2. 只有店名即填店名回傳。3. 絕對禁止地址。",
   "items": [
     {{ "product_code": "代號", "quantity": 數量 }}
   ],

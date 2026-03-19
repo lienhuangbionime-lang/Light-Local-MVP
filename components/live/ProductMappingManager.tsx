@@ -45,11 +45,9 @@ export const PricingHelper = ({
                 : Math.round((baseCost + 90) / 5) * 5
                 
             const p2 = Math.round((p1 * 2 * 0.9) / 5) * 5
-            const p3 = Math.round((p1 * 3 * 0.8) / 5) * 5
             setTiers([
                 { q: 1, p: p1 },
-                { q: 2, p: p2 },
-                { q: 3, p: p3 }
+                { q: 2, p: p2 }
             ])
         }
     }, [currentRule, baseCost])
@@ -58,11 +56,9 @@ export const PricingHelper = ({
         const newTiers = [...tiers]
         newTiers[index].p += delta
         
-        // If we adjust Tier 1 (1 piece), cascade the discount rules to Tiers 2 and 3
         if (index === 0) {
             const p1 = newTiers[0].p
             if (newTiers[1]) newTiers[1].p = Math.round((p1 * 2 * 0.9) / 5) * 5
-            if (newTiers[2]) newTiers[2].p = Math.round((p1 * 3 * 0.8) / 5) * 5
             
             // For tiers beyond 3, use the unit price of tier 3 as base (if tier 3 exists)
             for (let i = 3; i < newTiers.length; i++) {
@@ -80,11 +76,9 @@ export const PricingHelper = ({
         const rawP1 = baseCost + 90
         const p1 = Math.round(rawP1 / 5) * 5
         const p2 = Math.round((p1 * 2 * 0.9) / 5) * 5
-        const p3 = Math.round((p1 * 3 * 0.8) / 5) * 5
         setTiers([
             { q: 1, p: p1 },
-            { q: 2, p: p2 },
-            { q: 3, p: p3 }
+            { q: 2, p: p2 }
         ])
     }
 
@@ -287,13 +281,11 @@ export const ProductMappingManager = ({
                                                         if (rule && !rule.includes(":")) {
                                                             const p1 = Number(rule)
                                                             const p2 = Math.round((p1 * 2 * 0.9) / 5) * 5
-                                                            const p3 = Math.round((p1 * 3 * 0.8) / 5) * 5
-                                                            rule = `1:${p1}, 2:${p2}, 3:${p3}`
+                                                            rule = `1:${p1}, 2:${p2}`
                                                         } else if (!rule) {
                                                             const p1 = Math.round((p.localCostLanded + 90) / 5) * 5
                                                             const p2 = Math.round((p1 * 2 * 0.9) / 5) * 5
-                                                            const p3 = Math.round((p1 * 3 * 0.8) / 5) * 5
-                                                            rule = `1:${p1}, 2:${p2}, 3:${p3}`
+                                                            rule = `1:${p1}, 2:${p2}`
                                                         }
                                                         onMappingChange(index, 'priceRule', rule)
                                                     }

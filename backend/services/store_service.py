@@ -21,11 +21,19 @@ def _load_stores_into_memory():
     global _STORE_BY_ID, _STORE_BY_NAME
     # 這裡使用絕對路徑以確保在任何環境都能讀到
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(current_dir, "..", "..", "scripts", "stores.json")
-    json_path = os.path.normpath(json_path)
     
-    if not os.path.exists(json_path):
-        print(f"[STORE] stores.json not found at {json_path}")
+    # 支援多種可能的 stores.json 路徑 (根據 Render/Docker 結構)
+    POTENTIAL_JSON_PATHS = [
+        os.path.join(current_dir, "..", "..", "scripts", "stores.json"), # 本地或 root
+        os.path.join(os.path.dirname(current_dir), "..", "scripts", "stores.json"),
+        "/app/scripts/stores.json", # Docker
+        os.path.join(os.getcwd(), "scripts", "stores.json")
+    ]
+    
+    json_path = next((p for p in POTENTIAL_JSON_PATHS if os.path.exists(p)), None)
+    
+    if not json_path or not os.path.exists(json_path):
+        print(f"[STORE] stores.json not found in any potential paths: {POTENTIAL_JSON_PATHS}")
         return
     
     try:
@@ -63,30 +71,36 @@ def _fuzzy_find_store(clean_name: str) -> Optional[dict]:
         sid = _STORE_BY_NAME[clean_name]
         return {**_STORE_BY_ID[sid], "id": sid}
     
-    # 2. 包含匹配 (如 "旗山旗力" 包含 "旗山旗")
+    # 使用字元重合度 (Intersection over Union) 進行評分
     best_match = None
     best_score = 0.0
     
     for name, sid in _STORE_BY_NAME.items():
         score = 0.0
         
-        # 如果輸入的名稱包含資料庫的名字 (處理 Ibon 截斷)
-        if name in clean_name:
-            score = 0.5 + len(name) / len(clean_name)
-        elif clean_name in name:
-            score = 0.4 + len(clean_name) / len(name)
+        # 移除門市冗餘字 (店名核心)
+        s_name_core = name
+        for w in ["門市", "分店", "店"]:
+            s_name_core = s_name_core.replace(w, "")
+            
+        # 1. 核心店名精確包含
+        if s_name_core in clean_name or clean_name in s_name_core:
+            # 依據字數比例給分
+            ratio = min(len(s_name_core), len(clean_name)) / max(len(s_name_core), len(clean_name))
+            score = 0.6 + (0.4 * ratio)
         else:
-            # 簡單的相關性權重
-            common_chars = set(clean_name) & set(name)
-            if common_chars:
-                score = len(common_chars) / max(len(clean_name), len(name))
+            # 2. 字元集重合 (處理錯字或部分缺失)
+            set_c = set(clean_name)
+            set_s = set(s_name_core)
+            if len(set_c & set_s) >= 2:
+                score = len(set_c & set_s) / len(set_c | set_s)
         
         if score > best_score:
             best_score = score
             best_match = {**_STORE_BY_ID[sid], "id": sid}
     
-    # 閾值設定為 0.4
-    return best_match if best_score >= 0.4 else None
+    # 閾值設定為 0.7 (確保準確性)
+    return best_match if best_score >= 0.7 else None
 
 
 # ─────────────────────────────────────────
