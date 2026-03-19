@@ -8,7 +8,8 @@ load_dotenv()
 
 # [SECURITY] Admin HMAC Secret
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "".join(random.choices("0123456789abcdef", k=16)))
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN", "")
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-2-preview"
 GEMINI_VISION_MODEL = "models/gemma-3-27b-it" # 更新為確切的 IT 版本
 
