@@ -8,7 +8,8 @@ if (Test-Path "out") {
 }
 
 # 2. Run Next.js build (with output: 'export')
-Write-Host "Running next build..."
+Write-Host "Running next build with EXPORT=true..."
+$env:EXPORT="true"
 npm run build
 
 if ($LASTEXITCODE -ne 0) {
