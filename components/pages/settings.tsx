@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useAppStore, DEFAULT_BACKEND_URL } from "@/lib/store"
 import { generateAdminSignature } from "@/lib/crypto"
 import { Button } from "@/components/ui/button"
@@ -23,10 +23,67 @@ import { Label } from "@/components/ui/label"
 import { useTranslation } from "@/lib/i18n"
 
 export function SettingsPage() {
-  const { batches, items, shipments, sales, clearData, mergeData, geminiApiKey, setGeminiApiKey, backendUrl, setBackendUrl, language, setLanguage } = useAppStore()
+  const { batches, items, shipments, sales, clearData, mergeData, geminiApiKey, setGeminiApiKey, backendUrl, setBackendUrl, language, setLanguage, adminSecret } = useAppStore()
   const { t } = useTranslation()
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Logistics Settings State
+  const [logistics, setLogistics] = useState({
+    free_shipping_threshold: 3,
+    buyer_shipping_fee: 50,
+    platform_shipping_fee: 38
+  })
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  // Fetch Logistics Config on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const ts = Math.floor(Date.now() / 1000).toString()
+        const sig = await generateAdminSignature(adminSecret, ts)
+        const res = await fetch(`${backendUrl}/api/seller/config`, {
+          headers: {
+            "X-Admin-Signature": sig,
+            "X-Admin-Timestamp": ts
+          }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setLogistics(data)
+        }
+      } catch (e) {
+        console.error("Failed to fetch logistics config", e)
+      }
+    }
+    fetchConfig()
+  }, [backendUrl, adminSecret])
+
+  const saveLogistics = async () => {
+    setIsSyncing(true)
+    try {
+      const ts = Math.floor(Date.now() / 1000).toString()
+      const sig = await generateAdminSignature(adminSecret, ts)
+      const res = await fetch(`${backendUrl}/api/seller/config`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Signature": sig,
+          "X-Admin-Timestamp": ts
+        },
+        body: JSON.stringify(logistics)
+      })
+      if (res.ok) {
+        toast({ title: "設定已儲存", description: "運費與免運門檻已更新至後端" })
+      } else {
+        throw new Error("Save failed")
+      }
+    } catch (e) {
+      toast({ title: "儲存失敗", description: "無法連線至伺服器或權限錯誤", variant: "destructive" })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>, mode: "replace" | "merge") => {
     const file = e.target.files?.[0]
@@ -249,6 +306,59 @@ export function SettingsPage() {
               {t("settings.restore_btn") || "恢復為建議網址 (Render 雲端)"}
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Logistics Fee Settings */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="pb-3 text-primary">
+          <CardTitle className="text-base flex items-center gap-2">
+            <RefreshCcw className="h-4 w-4" />
+            物流費用與拆分設定
+          </CardTitle>
+          <CardDescription className="text-primary/70">
+            設定買家運費與 7-11 Excel 拆分規則。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="buyerFee" className="text-xs">買家運費 (TWD)</Label>
+              <Input
+                id="buyerFee"
+                type="number"
+                value={logistics.buyer_shipping_fee}
+                onChange={(e) => setLogistics({...logistics, buyer_shipping_fee: parseInt(e.target.value)})}
+                className="mt-1 bg-background"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">未達免運時收取的費用 (預設 50)</p>
+            </div>
+            <div>
+              <Label htmlFor="platformFee" className="text-xs">平台運費 (TWD)</Label>
+              <Input
+                id="platformFee"
+                type="number"
+                value={logistics.platform_shipping_fee}
+                onChange={(e) => setLogistics({...logistics, platform_shipping_fee: parseInt(e.target.value)})}
+                className="mt-1 bg-background"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Excel 拆分用的平台費 (預設 38)</p>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="threshold" className="text-xs font-bold text-primary">免運門檻 (商品總件數)</Label>
+            <Input
+              id="threshold"
+              type="number"
+              value={logistics.free_shipping_threshold}
+              onChange={(e) => setLogistics({...logistics, free_shipping_threshold: parseInt(e.target.value)})}
+              className="mt-1 bg-background border-primary/30"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">達到此件數後，買家運費將自動變為 0 (Excel 仍會拆分 38)</p>
+          </div>
+          <Button onClick={saveLogistics} disabled={isSyncing} className="w-full">
+            {isSyncing ? "儲存中..." : "保存物流設定"}
+          </Button>
         </CardContent>
       </Card>
 

@@ -12,7 +12,7 @@ if current_dir not in sys.path:
 
 print(f"[SYSTEM] Path Fix: current={current_dir}, parent={parent_dir}")
 
-from fastapi import FastAPI, Request, BackgroundTasks, HTTPException, Response
+from fastapi import FastAPI, UploadFile, File, Form, Header, BackgroundTasks, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import time
@@ -31,7 +31,7 @@ from backend.config import (
 )
 import backend.config as config
 from backend.models.schemas import Order, ConfirmOrderRequest
-from backend.core.security import verify_admin_signature, verify_order_signature
+from backend.core.security import verify_admin, generate_admin_signature, verify_order_signature
 from backend.database.firebase import (
     load_orders, load_events, save_orders, clear_orders_on_cloud, 
     sync_state_from_cloud, sync_orders_from_cloud, save_events
@@ -172,7 +172,35 @@ async def set_live_status(data: Dict):
     await save_orders(save_config=True, fields=["is_live_active", "session_start_time", "free_shipping_threshold", "shipping_fee"])
     return {"status": "success"}
 
-@app.get("/api/seller/stats")
+@app.get("/api/seller/config")
+async def get_seller_config(
+    sig: str = Header(None, alias="X-Admin-Signature"),
+    ts: str = Header(None, alias="X-Admin-Timestamp")
+):
+    verify_admin(ts, sig)
+    return {
+        "free_shipping_threshold": config.FREE_SHIPPING_THRESHOLD,
+        "buyer_shipping_fee": config.BUYER_SHIPPING_FEE,
+        "platform_shipping_fee": config.PLATFORM_SHIPPING_FEE
+    }
+
+@app.post("/api/seller/config")
+async def update_seller_config(
+    data: dict,
+    sig: str = Header(None, alias="X-Admin-Signature"),
+    ts: str = Header(None, alias="X-Admin-Timestamp")
+):
+    # print(f"[CONFIG] Received body: {data}") # DEBUG
+    verify_admin(ts, sig)
+    if "free_shipping_threshold" in data:
+        config.FREE_SHIPPING_THRESHOLD = int(data["free_shipping_threshold"])
+    if "buyer_shipping_fee" in data:
+        config.BUYER_SHIPPING_FEE = int(data["buyer_shipping_fee"])
+    if "platform_shipping_fee" in data:
+        config.PLATFORM_SHIPPING_FEE = int(data["platform_shipping_fee"])
+    return {"status": "ok"}
+
+@app.post("/api/seller/status")
 async def get_stats():
     """統計銷售數據 (細分已給連結與已確認)"""
     stats = {}
@@ -356,8 +384,11 @@ async def check_config(admin_secret: Optional[str] = None):
 
 @app.delete("/api/debug/events")
 async def clear_events():
+    print(f"[DEBUG] 清除事件紀錄前：{len(config.LAST_EVENTS)} 筆")
     config.LAST_EVENTS.clear()
+    from backend.database.firebase import save_events
     await save_events()
+    print(f"[DEBUG] 清除成功")
     return {"status": "success"}
 
 @app.post("/api/debug/simulate_webhook")
@@ -492,14 +523,15 @@ async def export_orders():
             # 1. 計算金額 (以合併後的總件數判斷免運)
             items_price = sum((item.price or 0) * item.quantity for item in data["items"])
             total_qty = sum(item.quantity for item in data["items"])
-            
-            # 取整筆合併單的門檻與運費設定 (以全域設定為準)
-            threshold = data["free_shipping_threshold"]
-            base_shipping = data["shipping_fee"]
-            
-            is_free = total_qty >= threshold
-            actual_shipping = 0 if is_free else base_shipping
-            total_amount = int(round(items_price + actual_shipping))
+
+            # [LOGISTICS] 核心運費規則
+            # 1. 湊不到免運門檻 => 買家付 (ItemsSum + BUYER_SHIPPING_FEE)
+            # 2. 湊到免運門檻 => 買家付 (ItemsSum)
+            # Excel 拆分均為 (Total - PLATFORM_SHIPPING_FEE) 與 (PLATFORM_SHIPPING_FEE)
+            is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
+            total_shipping_charged = 0 if is_free else config.BUYER_SHIPPING_FEE
+            total_amount = int(round(items_price + total_shipping_charged))
+            platform_shipping = config.PLATFORM_SHIPPING_FEE
             
             # 2. 彙整商品名稱 (合併後顯示所有品項)
             from collections import Counter
@@ -510,15 +542,15 @@ async def export_orders():
             
             # 3. 提取 6 碼店號
             store_id = ""
-            if o.shipping_info:
+            if data["shipping_info"]:
                 import re
-                match = re.search(r'\d{6}', o.shipping_info)
-                store_id = match.group(0) if match else o.shipping_info
+                match = re.search(r'\d{6}', data["shipping_info"])
+                store_id = match.group(0) if match else data["shipping_info"]
 
             # 依照模板欄位填入 (與截圖一致，且符合用戶 290+50 => 302+38 邏輯)
-            platform_shipping = 38 # 賣貨便平台預設運費
-            ws.cell(row=row, column=1, value=o.buyer_name or o.fb_user_name) # 取件人姓名
-            ws.cell(row=row, column=2, value=o.phone or "")                 # 取件人手機
+            platform_shipping = config.PLATFORM_SHIPPING_FEE # 賣貨便平台預設運費
+            ws.cell(row=row, column=1, value=data["buyer_name"])  # 取件人姓名
+            ws.cell(row=row, column=2, value=data["phone"] or "")  # 取件人手機
             ws.cell(row=row, column=3, value=store_id)                      # 取貨門市
             ws.cell(row=row, column=4, value="常溫")                        # 溫層
             ws.cell(row=row, column=5, value=items_summary)                 # 商品

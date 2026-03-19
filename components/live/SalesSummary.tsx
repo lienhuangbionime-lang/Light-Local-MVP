@@ -23,9 +23,7 @@ export const SalesSummary = ({
     onEndSession, 
     onRemoveSale,
     lastHarvestedOrders = [],
-    allOrders = [],
-    shippingFee = 38,
-    onChangeShippingFee
+    allOrders = []
 }: { 
     sales: any[]; 
     stats: { totalRevenue: number; totalProfit: number }; 
@@ -33,8 +31,6 @@ export const SalesSummary = ({
     onRemoveSale: (id: string) => void; 
     lastHarvestedOrders?: any[];
     allOrders?: any[];
-    shippingFee?: number;
-    onChangeShippingFee?: (fee: number) => void;
 }) => {
     const { toast } = useToast()
     const { t } = useTranslation()
@@ -59,7 +55,7 @@ export const SalesSummary = ({
 
     const handleExport711Excel = async () => {
         const backendUrl = useAppStore.getState().backendUrl;
-        const url = `${backendUrl}/api/seller/orders/export_xlsx?shipping_fee=${shippingFee}`;
+        const url = `${backendUrl}/api/seller/orders/export_xlsx`;
         
         toast({
             title: t("live.summary.exporting_title"),
@@ -107,16 +103,6 @@ export const SalesSummary = ({
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-2 bg-white/50 border border-border/50 rounded-md px-2 py-1 h-8 shadow-sm">
-                        <span className="text-[10px] font-bold text-slate-500">{t("live.summary.shipping_fee")}</span>
-                        <input 
-                            type="number" 
-                            value={shippingFee}
-                            onChange={(e) => onChangeShippingFee && onChangeShippingFee(Number(e.target.value))}
-                            className="h-5 w-12 text-[10px] bg-transparent border-none focus:ring-0 p-0 text-center font-bold"
-                        />
-                        <span className="text-[10px] font-bold text-slate-400">TWD</span>
-                    </div>
 
                     {allOrders.length > 0 && (
                         <div className="flex items-center gap-2">

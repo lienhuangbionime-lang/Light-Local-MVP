@@ -10,16 +10,7 @@ export const DiagnosticConsole = ({
     debugEvents, 
     healthStatus, 
     backendUrl, 
-    onSimulate, 
-    onSubscribePage,
-    onUpdateToken,
-    onTest,
-    onReset,
     onClearEvents,
-    isSimulating,
-    isLoadingSub,
-    isLoadingTest,
-    isLoadingReset,
     showDebug,
     onToggleDebug,
     connectionError
@@ -27,19 +18,10 @@ export const DiagnosticConsole = ({
     debugEvents: any[]; 
     healthStatus: any; 
     backendUrl: string; 
-    onSimulate: () => void; 
-    onSubscribePage: () => void;
-    onUpdateToken: () => void;
-    onTest: () => void;
-    onReset?: (deep: boolean) => void;
-    isSimulating: boolean;
-    isLoadingSub: boolean;
-    isLoadingTest: boolean;
-    isLoadingReset?: boolean;
-    showDebug: boolean;
-    onToggleDebug: () => void;
-    onClearEvents: () => void;
-    connectionError?: string | null;
+    showDebug: boolean; 
+    onToggleDebug: () => void; 
+    onClearEvents: () => void; 
+    connectionError?: string | null; 
 }) => {
     const { t } = useTranslation()
     return (
@@ -48,49 +30,6 @@ export const DiagnosticConsole = ({
             <Button variant="ghost" size="sm" className="text-[10px] text-muted-foreground hover:text-primary gap-1" onClick={onToggleDebug}>
                 {showDebug ? t("live.diag.hide") : t("live.diag.show")}
             </Button>
-            {showDebug && onReset && (
-                <div className="flex gap-2">
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-[9px] text-destructive/60 hover:text-destructive hover:bg-destructive/5 h-6 px-2 border border-destructive/10" 
-                        onClick={() => {
-                            if (confirm(t("live.diag.reset_confirm"))) {
-                                onReset(false);
-                            }
-                        }}
-                        disabled={isLoadingReset}
-                    >
-                        {t("live.diag.reset_normal")}
-                    </Button>
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-[9px] text-red-600 hover:text-red-700 hover:bg-red-50 h-6 px-2 border border-red-200 font-bold" 
-                        onClick={() => {
-                            if (confirm(t("live.diag.reset_deep_confirm"))) {
-                                onReset(true);
-                            }
-                        }}
-                        disabled={isLoadingReset}
-                    >
-                        {t("live.diag.reset_deep")}
-                    </Button>
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-[9px] text-purple-600 hover:text-purple-700 hover:bg-purple-50 h-6 px-2 border border-purple-200 font-bold" 
-                        onClick={() => {
-                            if (confirm("確定要【徹底清空】所有已填單的資料嗎？\n(請確保您已下載 Excel 並匯入賣貨便)")) {
-                                onReset(true); // 使用 deep reset 的邏輯，或者之後可以更細分
-                            }
-                        }}
-                        disabled={isLoadingReset}
-                    >
-                        🗑️ {t("live.diag.clear_confirmed") || "清空已確認單"}
-                    </Button>
-                </div>
-            )}
         </div>
 
         {showDebug && (
@@ -104,9 +43,6 @@ export const DiagnosticConsole = ({
                             <Button variant="ghost" size="sm" className="h-6 px-2 text-[9px] gap-1 hover:bg-destructive/10 hover:text-destructive border border-destructive/10" onClick={onClearEvents}>
                                 <Trash2 className="h-2 w-2" /> 
                                 {t("live.diag.clear_events")}
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-[9px] gap-1 hover:bg-amber-100 hover:text-amber-800 border border-amber-200/50" onClick={onSimulate} disabled={isSimulating}>
-                                <Plus className="h-2 w-2" /> {t("live.diag.simulate_test")}
                             </Button>
                         </div>
                     </CardHeader>
@@ -186,20 +122,6 @@ export const DiagnosticConsole = ({
                                 </p>
                             </div>
                         )}
-                        <div className="grid grid-cols-2 gap-2 pb-2">
-                             <Button variant="outline" size="sm" className="h-8 text-[10px] border-primary/20 bg-white/50" onClick={onTest} disabled={isLoadingTest}>
-                                 {isLoadingTest ? t("live.diag.connecting") : t("live.diag.refresh")}
-                             </Button>
-                             <Button variant="outline" size="sm" className="h-8 text-[10px] text-blue-600 border-blue-100 bg-white/50" onClick={onSubscribePage} disabled={isLoadingSub}>
-                                 {isLoadingSub ? t("live.diag.subscribing") : t("live.diag.subscribe")}
-                             </Button>
-                             <Button variant="outline" size="sm" className="h-8 text-[10px] text-orange-600 border-orange-100 bg-white/50" onClick={onUpdateToken}>
-                                 {t("live.diag.set_token")}
-                             </Button>
-                             <Button variant="secondary" size="sm" className="h-8 text-[10px] gap-1 font-bold shadow-sm" onClick={onSimulate} disabled={isSimulating}>
-                                 <Zap className="h-3 w-3 text-yellow-500 fill-yellow-500" /> {isSimulating ? t("live.diag.simulating") : t("live.diag.simulate")}
-                             </Button>
-                        </div>
 
                         {healthStatus?.page_name && (
                             <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100/50 shadow-sm">

@@ -57,7 +57,6 @@ export function LivePage() {
     } | null>(null)
     const [showDebug, setShowDebug] = useState(false)
     const [connectionError, setConnectionError] = useState<string | null>(null)
-    const [freeShippingThreshold, setFreeShippingThreshold] = useState<number>(3)
 
     // 0. 直播 x 銷售：本場直播的即時銷售摘要（整合 Sales 模組）
     const liveSalesForCurrentSession = useMemo(
@@ -271,8 +270,6 @@ export function LivePage() {
                 },
                 body: JSON.stringify({ 
                     active_products: dict,
-                    free_shipping_threshold: freeShippingThreshold,
-                    shipping_fee: useAppStore.getState().shippingFee,
                     is_live: true
                 })
             })
@@ -601,15 +598,13 @@ export function LivePage() {
                 }}
             />
 
-            <SalesSummary 
-                sales={liveSalesForCurrentSession} 
-                stats={liveSalesStats} 
-                onEndSession={handleEndLiveSession} 
-                onRemoveSale={(id) => useAppStore.getState().removeSale(id)} 
-                allOrders={orderMirror}
-                shippingFee={useAppStore(state => state.shippingFee)}
-                onChangeShippingFee={useAppStore.getState().setShippingFee}
-            />
+                <SalesSummary 
+                    sales={liveSalesForCurrentSession} 
+                    stats={liveSalesStats} 
+                    onEndSession={handleEndLiveSession} 
+                    onRemoveSale={(id) => useAppStore.getState().removeSale(id)} 
+                    allOrders={orderMirror}
+                />
 
             {isLiveActive && (
                 <div className="space-y-4">
@@ -641,50 +636,13 @@ export function LivePage() {
                         </div>
                     </div>
                     
-                    <Card className="border-indigo-100 bg-indigo-50/30">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-700">
-                                {t("live.shipping.title")}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center justify-between gap-4">
-                                <div className="space-y-0.5">
-                                    <Label className="text-xs font-bold">{t("live.shipping.threshold_label")}</Label>
-                                    <p className="text-[10px] text-muted-foreground">{t("live.shipping.threshold_desc")}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Input 
-                                        type="number" 
-                                        min={1} 
-                                        className="w-20 text-center font-bold"
-                                        value={freeShippingThreshold}
-                                        onChange={(e: any) => setFreeShippingThreshold(Number(e.target.value))}
-                                    />
-                                    <span className="text-sm font-medium">{t("live.shipping.unit")}</span>
-                                </div>
-                            </div>
-                            <p className="text-[10px] text-amber-600 font-medium">
-                                {t("live.shipping.hint")}
-                            </p>
-                        </CardContent>
-                    </Card>
 
                     <DiagnosticConsole 
                         debugEvents={debugEvents} 
                         healthStatus={healthStatus} 
                         backendUrl={backendUrl} 
-                        onSimulate={handleSimulateWebhook} 
-                        onSubscribePage={handleSubscribePage}
-                        onUpdateToken={handleUpdateToken}
-                        onTest={handleTestConnection}
-                        isSimulating={isSimulating}
-                        isLoadingSub={isSubscribing}
-                        isLoadingTest={isTestingConn}
                         showDebug={showDebug}
                         onToggleDebug={() => setShowDebug(!showDebug)}
-                        onReset={handleResetSystem}
-                        isLoadingReset={isResetting}
                         onClearEvents={handleClearEvents}
                         connectionError={connectionError}
                     />
