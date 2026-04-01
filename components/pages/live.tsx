@@ -304,10 +304,13 @@ export function LivePage() {
                 setIsLiveActive(true) // 確保前端狀態同步
                 toast({ title: t("live.mapping.sync_success"), description: t("live.mapping.sync_success_desc") })
             } else {
-                throw new Error(t("live.sync_backend_fail"))
+                if (res.status === 403) throw new Error("管理員密碼錯誤 (403 Forbidden)，請檢查「設定」與 .env 是否一致")
+                if (res.status === 500) throw new Error("雲端伺服器內部錯誤 (500 Internal Error)")
+                if (res.status === 404) throw new Error("伺服器無法連線 (404 Not Found)")
+                throw new Error(`${t("live.sync_backend_fail")} (HTTP ${res.status})`)
             }
         } catch (error: any) {
-            toast({ title: t("live.mapping.sync_error_title"), description: t("live.mapping.sync_error_desc"), variant: "destructive" })
+            toast({ title: t("live.mapping.sync_error_title"), description: error.message || t("live.mapping.sync_error_desc"), variant: "destructive" })
         } finally {
             setIsSyncing(false)
         }

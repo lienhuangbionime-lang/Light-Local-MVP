@@ -27,6 +27,10 @@ async def send_messenger_link(fb_user_id: str, order_id: str, items: List[OrderI
     frontend_url = os.getenv("VERCEL_URL", "light-local-mvp.vercel.app")
     if not frontend_url.startswith("http"):
         frontend_url = f"https://{frontend_url}"
+    
+    # [LOCAL-DEV] 若後端是本地端，則前端也強制嘗試本地端 (通常 Next.js 是 3000)
+    if base_url and ("127.0.0.1" in base_url or "localhost" in base_url):
+        frontend_url = "http://127.0.0.1:3000"
         
     checkout_url = f"{frontend_url}/checkout/{order_id}"
     
@@ -146,7 +150,7 @@ async def process_webhook_data(data: Dict, background_tasks: BackgroundTasks, is
     })
     if len(config.LAST_EVENTS) > 20: del config.LAST_EVENTS[20:]
     
-    base_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RENDER_EXTERNAL_HOSTNAME") or os.getenv("VERCEL_URL") or ""
+    base_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RENDER_EXTERNAL_HOSTNAME") or os.getenv("VERCEL_URL") or "http://127.0.0.1:8000"
     if base_url and not base_url.startswith("http"):
         base_url = f"https://{base_url}"
 

@@ -53,8 +53,11 @@
 1. **禁止 Emojis**: 後端 Python `print()` 絕對禁止使用 Emoji，避免 Windows `cp950` 編碼崩潰。
 2. **禁止 localhost**: 在 Next.js 請求或後端呼叫中，必須使用 `127.0.0.1` 取代 `localhost`，避免 Windows IPv6 造成的連線延遲/斷開。
 3. **路徑修正**: 雲端部署 (Render) 若發生 `ModuleNotFoundError`，必須在 `main.py` 第 1 行注入 `sys.path` 修正。
-4. **直播 UI 淨化**: 直播介面（Live Page）必須保持極簡，禁止在 Diagnostic Console 放置生產環境不必要的測試按鈕（僅保留清空日誌）。
-5. **運費延遲觸發**: 運費僅在「Excel 導出」階段計算與加入，結帳頁面應保持純粹的商品金額確認。
+4. **直播 UI 淨化**: 直播介面（Live Page）必須保持極簡，禁止在 Diagnostic Console 放置不必要的測試按鈕。
+5. **運費延遲觸發**: 運費僅在「Excel 導出」階段計算與加入，結帳頁面應保持純商品金額。
+6. **CORS 安全規格**: 使用 `allow_origins=["*"]` 時，必須將 `allow_credentials` 設為 `False`，避免瀏覽器攔截 Preflight 請求。
+7. **端點對齊 (Alignment)**: 所有資料獲取類端點 (如：`/stats`, `/config`) 必須統一使用 **GET** 方法，確保與前端 Fetch 邏輯一致。
+8. **AI 視覺權重**: 7-11 門市辨識應優先匹配包含 「7-ELEVEN」 與 「門市」 字樣的行（如地圖標題），次級匹配收據元數據。
 
 ---
-**Last Updated**: 2026-03-20 | **Status**: Phase 5 Advanced Order Life-cycle Deployed (Archive-Split + Triplet Merge)
+**Last Updated**: 2026-04-02 | **Status**: Phase 6 Connectivity & Intelligence Restored (CORS Fix + Endpoint Sync + Vision Opt)

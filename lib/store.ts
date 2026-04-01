@@ -1,7 +1,9 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
-export const DEFAULT_BACKEND_URL = "https://light-local-mvp.onrender.com";
+export const DEFAULT_BACKEND_URL = typeof window !== "undefined" && window.location.hostname === "localhost" 
+  ? "http://127.0.0.1:8000" 
+  : "https://light-local-mvp.onrender.com";
 
 export type AppTab = "dashboard" | "batch" | "digitize" | "shipments" | "inventory" | "sales" | "live" | "settings";
 

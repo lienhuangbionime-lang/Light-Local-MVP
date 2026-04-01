@@ -18,7 +18,7 @@ export default function CheckoutPage() {
   const { toast } = useToast()
 
   // 優先從查詢參數獲取後端 URL，否則使用預設值
-  const backendUrl = searchParams.get("backend") || searchParams.get("b") || "https://echoorder-buffer.onrender.com"
+  const backendUrl = searchParams.get("backend") || searchParams.get("b") || "https://light-local-mvp.onrender.com"
   
   const [order, setOrder] = useState<any>(null)
   const [loading, setLoading] = useState(true)

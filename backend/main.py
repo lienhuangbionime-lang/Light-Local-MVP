@@ -31,7 +31,7 @@ from backend.config import (
 )
 import backend.config as config
 from backend.models.schemas import Order, ConfirmOrderRequest
-from backend.core.security import verify_admin, generate_admin_signature, verify_order_signature
+from backend.core.security import verify_admin, verify_admin_signature, generate_admin_signature, verify_order_signature
 from backend.database.firebase import (
     load_orders, load_events, save_orders, clear_orders_on_cloud, 
     sync_state_from_cloud, sync_orders_from_cloud, save_events
@@ -209,7 +209,7 @@ async def update_seller_config(
         config.PLATFORM_SHIPPING_FEE = int(data["platform_shipping_fee"])
     return {"status": "ok"}
 
-@app.post("/api/seller/status")
+@app.get("/api/seller/stats")
 async def get_stats():
     """統計銷售數據 (細分已給連結與已確認)"""
     stats = {}
@@ -390,6 +390,44 @@ async def check_config(admin_secret: Optional[str] = None):
         "PAGE_ACCESS_TOKEN": "SET" if config.PAGE_ACCESS_TOKEN else "MISSING ❌",
         "INFO": "請確保在 Render.com 後台的 Environment Variables 正確設定了這些值。"
     }
+
+@app.get("/api/debug/products")
+async def get_debug_products():
+    return {
+        "product_count": len(config.ACTIVE_PRODUCTS),
+        "active_products": config.ACTIVE_PRODUCTS
+    }
+
+@app.post("/api/seller/orders/restore")
+async def restore_orders(request: Request):
+    """前端定期備份/自我修復：將失去的訂單或留言 ID 同步回後端"""
+    data = await request.json()
+    restored_count = 0
+    orders_data = data.get("orders", [])
+    
+    for o_dict in orders_data:
+        order_id = o_dict.get("order_id")
+        if order_id and order_id not in config.ORDER_POOL:
+            # 直接把前端字典塞進 Pydantic Model，這會完美保留 json 裡的 created_at 時間戳！
+            order = Order(**o_dict)
+            config.ORDER_POOL[order_id] = order
+            restored_count += 1
+            
+    processed_ids = data.get("processed_comment_ids", [])
+    for pid in processed_ids:
+        if pid not in config.PROCESSED_COMMENT_IDS:
+            config.PROCESSED_COMMENT_IDS.add(pid)
+            
+    if restored_count > 0 or processed_ids:
+        await save_orders()
+        print(f"[SELF-HEALING] 恢復了 {restored_count} 筆訂單與 {len(processed_ids)} 筆留言紀錄")
+        
+    return {"status": "success", "restored": restored_count}
+
+@app.post("/api/seller/pull_live_comments")
+async def pull_live_comments_stub(request: Request):
+    """主動抓取直播留言的端點 (目前僅為靜音 404 報錯)"""
+    return {"status": "success", "new_orders": 0, "message": "Stub: Polling not fully implemented"}
 
 @app.delete("/api/debug/events")
 async def clear_events():
@@ -580,7 +618,7 @@ async def export_orders():
 if __name__ == "__main__":
     import uvicorn
     # Render 會注入 PORT 環境變數，若無則預設 10000 (Render 預設) 或 8000
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8000))
     print(f"[SYSTEM] 啟動伺服器於 Port: {port} (RELOAD=True)")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
 else:
