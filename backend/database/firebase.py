@@ -244,3 +244,41 @@ async def load_events():
             config.LAST_EVENTS.extend(data.get("events", []))
     except Exception as e:
         print(f"[FIREBASE] 載入日誌失敗: {e}")
+async def sync_711_stores_from_cloud():
+    """從 Firestore 同步 7-11 門市資料並存入本地快取"""
+    if not db: return {"status": "error", "message": "Firebase not initialized"}
+    
+    try:
+        print("[FIREBASE] 正在從雲端抓取 7-11 門市資料...")
+        def _get_stores():
+            # 使用 stream() 處理大量資料
+            return db.collection("stores_711").stream()
+        
+        docs = await asyncio.to_thread(_get_stores)
+        
+        stores_data = {}
+        count = 0
+        for doc in docs:
+            data = doc.to_dict()
+            # 格式轉換為本地 store_service 期待的樣子
+            stores_data[doc.id] = {
+                "id": doc.id,
+                "name": data.get("name", "未知"),
+                "address": data.get("address", "")
+            }
+            count += 1
+            if count % 1000 == 0: print(f"[FIREBASE] 已抓取 {count} 筆門市...")
+
+        # 儲存到本地 scripts/stores_cloud.json
+        import json
+        save_path = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "stores_cloud.json")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        with open(save_path, "w", encoding="utf-8") as f:
+            json.dump(stores_data, f, ensure_ascii=False, indent=2)
+            
+        print(f"[FIREBASE] 同步完成，共 {count} 筆門市，已存至 {save_path}")
+        return {"status": "success", "count": count}
+    except Exception as e:
+        print(f"[FIREBASE] 門市同步失敗: {e}")
+        return {"status": "error", "message": str(e)}

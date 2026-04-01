@@ -253,6 +253,23 @@ async def update_seller_config(
         config.PLATFORM_SHIPPING_FEE = int(data["platform_shipping_fee"])
     return {"status": "ok"}
 
+@app.post("/api/seller/sync_stores")
+async def sync_stores(request: Request):
+    """從 Firestore 同步 7-11 門市資料 (需要管理員簽名)"""
+    sig = request.headers.get("X-Admin-Signature")
+    ts = request.headers.get("X-Admin-Timestamp")
+    if not verify_admin_signature(sig, ts):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    from backend.database.firebase import sync_711_stores_from_cloud
+    from backend.services.store_service import _load_stores_into_memory
+    
+    result = await sync_711_stores_from_cloud()
+    if result["status"] == "success":
+        # 同步後重新載入記憶體
+        _load_stores_into_memory()
+    return result
+
 @app.get("/api/seller/stats")
 async def get_stats():
     """統計銷售數據 (細分已給連結與已確認)"""

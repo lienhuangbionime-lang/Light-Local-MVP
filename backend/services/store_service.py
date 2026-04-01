@@ -19,20 +19,19 @@ def _load_stores_into_memory():
     """從 stores.json 載入門市資料到記憶體"""
     global _STORE_BY_ID, _STORE_BY_NAME
     # 這裡使用絕對路徑以確保在任何環境都能讀到
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 支援多種可能的 stores.json 路徑 (根據 Render/Docker 結構)
     POTENTIAL_JSON_PATHS = [
-        os.path.join(current_dir, "..", "..", "scripts", "stores.json"), # 本地或 root
-        os.path.join(os.path.dirname(current_dir), "..", "scripts", "stores.json"),
-        "/app/scripts/stores.json", # Docker
-        os.path.join(os.getcwd(), "scripts", "stores.json")
+        os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "stores_cloud.json"),
+        os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "stores.json"),
+        "scripts/stores_cloud.json",
+        "scripts/stores.json"
     ]
     
     json_path = next((p for p in POTENTIAL_JSON_PATHS if os.path.exists(p)), None)
     
-    if not json_path or not os.path.exists(json_path):
-        print(f"[STORE] stores.json not found in any potential paths: {POTENTIAL_JSON_PATHS}")
+    if not json_path:
+        print(f"[STORE] No stores.json or stores_cloud.json found.")
         return
     
     try:
@@ -41,18 +40,29 @@ def _load_stores_into_memory():
         
         _STORE_BY_ID.clear()
         _STORE_BY_NAME.clear()
-        for s in stores:
-            sid = str(s.get("id", ""))
-            name = s.get("name", "")
-            if sid and name:
-                _STORE_BY_ID[sid] = s
-                _STORE_BY_NAME[name] = sid
         
-        msg = f"[STORE] Loaded {len(_STORE_BY_ID)} stores into memory"
+        # 兼容模式：處理 List 或 Dict 格式
+        if isinstance(stores, dict):
+            # 雲端同步下來的 Dict 格式 (id -> data)
+            for sid, s in stores.items():
+                name = s.get("name", "")
+                if sid and name:
+                    _STORE_BY_ID[str(sid)] = s
+                    _STORE_BY_NAME[name] = str(sid)
+        elif isinstance(stores, list):
+            # 原始 stores.json 的 List 格式
+            for s in stores:
+                sid = str(s.get("id", ""))
+                name = s.get("name", "")
+                if sid and name:
+                    _STORE_BY_ID[sid] = s
+                    _STORE_BY_NAME[name] = sid
+        
+        msg = f"[STORE] Loaded {len(_STORE_BY_ID)} stores from {os.path.basename(json_path)}"
         print(msg)
         config.LAST_EVENTS.insert(0, {"time": "init", "content": msg})
     except Exception as e:
-        msg = f"[STORE] Failed to load stores.json: {e}"
+        msg = f"[STORE] Failed to load store data: {e}"
         print(msg)
         config.LAST_EVENTS.insert(0, {"time": "error", "content": msg})
 

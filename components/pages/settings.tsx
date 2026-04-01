@@ -532,6 +532,39 @@ export function SettingsPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+
+          <Button 
+            variant="outline" 
+            className="w-full border-primary text-primary hover:bg-primary/5"
+            disabled={isSyncing}
+            onClick={async () => {
+              try {
+                setIsSyncing(true);
+                const ts = Math.floor(Date.now() / 1000).toString()
+                const sig = await generateAdminSignature(adminSecret, ts)
+                const res = await fetch(`${backendUrl}/api/seller/sync_stores`, {
+                  method: "POST",
+                  headers: {
+                    "X-Admin-Signature": sig,
+                    "X-Admin-Timestamp": ts
+                  }
+                })
+                if (res.ok) {
+                  const data = await res.json()
+                  toast({ title: "同步成功", description: `已載入 ${data.count} 筆最新 7-11 門市資料` })
+                } else {
+                  throw new Error("Sync failed")
+                }
+              } catch (e) {
+                toast({ title: "同步失敗", description: "無法連線至伺服器或存取權限錯誤", variant: "destructive" })
+              } finally {
+                setIsSyncing(false);
+              }
+            }}
+          >
+            <RefreshCcw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? "門市同步中..." : "同步 7-11 門市資料 (Firestore)"}
+          </Button>
         </CardContent>
       </Card>
 
