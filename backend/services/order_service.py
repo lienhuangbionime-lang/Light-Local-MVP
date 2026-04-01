@@ -105,7 +105,7 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
             if "/" in message_text or len(message_text) > 15:
                 potential_contact_info = True
             
-            buyer_name = user_name
+            buyer_name = str(user_name)[:10]
             phone = None
             shipping_info = None
 
@@ -114,7 +114,9 @@ async def process_order(message_text: str, user_id: str, user_name: str, backgro
                 # 呼叫秘書 AI 進行解析
                 extracted = await ask_gemini_secretary(message_text)
                 if extracted and isinstance(extracted, dict):
-                    buyer_name = extracted.get("buyer_name") or user_name
+                    ext_name = extracted.get("buyer_name") or user_name
+                    # 🚀 物流限制：7-11 標籤姓名建議不超過 10 字元
+                    buyer_name = str(ext_name)[:10]
                     phone = extracted.get("phone")
                     raw_shipping = extracted.get("shipping_info")
                     

@@ -126,7 +126,7 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 【JSON 格式要求】：
 {{
   "numeric_inventory": "第一步：列出圖中所有 4-10 位的數字串，並註明旁邊看到的文字 (例如: AU-04983860:發票, 244251:店號, 93515313:統編)",
-  "buyer_name": "買家姓名 (規則：1. 若截圖最上方有對話者名稱，請優先提取。2. 名字請【嚴格控制在 10 字元內】，若過長請截斷。)",
+  "buyer_name": "買家姓名 (規則：1. 若截圖最上方有對話者名稱，請優先提取。2. 名字請【控制在 20 字元內】，若過長請截斷。)",
   "phone": "電話 (10 碼數字，如 0972907584)",
   "shipping_info": "7-11 門市資訊提取規則：從 numeric_inventory 中篩選『剛好 6 位』且最靠近『店號』或『7-11』關鍵字的數字。禁止提取 8 位數(發票/統編)或年度(113年)。若同時有店名與6位店號請回傳『店名(店號)』。",
   "items": [
@@ -169,7 +169,10 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
             json_match = re.search(r'\{.*\}', text_out, re.DOTALL)
             if json_match:
                 try:
-                    return json.loads(json_match.group(0))
+                    result = json.loads(json_match.group(0))
+                    if "buyer_name" in result and result["buyer_name"]:
+                        result["buyer_name"] = str(result["buyer_name"])[:20]
+                    return result
                 except: pass
             
             # Fallback: 手動提取關鍵欄位
@@ -178,7 +181,7 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
             phone_m = re.search(r'"phone":\s*"([^"]*)"', text_out)
             info_m = re.search(r'"shipping_info":\s*"([^"]*)"', text_out)
             
-            if name_m: extracted["buyer_name"] = name_m.group(1)
+            if name_m: extracted["buyer_name"] = name_m.group(1)[:20]
             if phone_m: extracted["phone"] = phone_m.group(1)
             if info_m: extracted["shipping_info"] = info_m.group(1)
             
