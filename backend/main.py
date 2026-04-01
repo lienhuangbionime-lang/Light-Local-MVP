@@ -172,14 +172,58 @@ async def get_live_status():
 
 @app.post("/api/seller/live/status")
 async def set_live_status(data: Dict):
-    config.IS_LIVE_ACTIVE = data.get("is_live_active", config.IS_LIVE_ACTIVE)
+    new_active = data.get("is_live_active", config.IS_LIVE_ACTIVE)
+    
+    # 🚀 [SESSION CLEANUP] 偵測結束直播 (從 True 變為 False)
+    if config.IS_LIVE_ACTIVE and not new_active:
+        print("[SYSTEM] 結束直播中... 正在清理與存檔訂單")
+        pending_count = 0
+        confirmed_count = 0
+        
+        # 1. 處理訂單池
+        to_delete_local = []
+        for oid, order in list(config.ORDER_POOL.items()):
+            if order.status == "PENDING":
+                # 未完成單 -> 直接刪除 (雲端也要清)
+                to_delete_local.append(oid)
+                pending_count += 1
+            elif order.status == "CONFIRMED":
+                # 已完成單 -> 搬移到 archived_orders 存檔 (Firestore 也搬)
+                await save_orders(order_id=oid, move_to_archive=True)
+                # 本地保留以便匯出，或者您可以選擇也從本地移除 (由 get_all_orders 的時間點決定)
+                confirmed_count += 1
+        
+        # 清理本地 PENDING
+        for oid in to_delete_local:
+            if oid in config.ORDER_POOL:
+                del config.ORDER_POOL[oid]
+        
+        # 2. 重置留言重複進單過濾器
+        config.PROCESSED_COMMENT_IDS.clear()
+        config.CURRENTLY_PROCESSING_IDS.clear()
+        
+        # 3. 呼叫雲端清理活躍訂單區 (確保 PENDING 鬼魂消失)
+        await clear_orders_on_cloud(pending_only=True)
+        
+        print(f"[SYSTEM] 清理完成: 刪除 {pending_count} 筆未完成, 存檔 {confirmed_count} 筆已完成, 重置留言 ID")
+
+    # 更新狀態
+    config.IS_LIVE_ACTIVE = new_active
     if config.IS_LIVE_ACTIVE:
+        # 開啟直播時重設起始時間
         config.SESSION_START_TIME = data.get("session_start_time", time.time())
+    
     config.FREE_SHIPPING_THRESHOLD = data.get("free_shipping_threshold", config.FREE_SHIPPING_THRESHOLD)
     config.SHIPPING_FEE = data.get("shipping_fee", config.SHIPPING_FEE)
     
-    await save_orders(save_config=True, fields=["is_live_active", "session_start_time", "free_shipping_threshold", "shipping_fee"])
-    return {"status": "success"}
+    # 保存配置
+    await save_orders(save_config=True, fields=["is_live_active", "session_start_time", "free_shipping_threshold", "shipping_fee", "processed_comment_ids"])
+    
+    return {
+        "status": "success", 
+        "is_active": config.IS_LIVE_ACTIVE, 
+        "session_start": config.SESSION_START_TIME
+    }
 
 @app.get("/api/seller/config")
 async def get_seller_config(

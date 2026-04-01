@@ -468,7 +468,7 @@ export function SettingsPage() {
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader className="pb-3 text-primary">
           <CardTitle className="text-base flex items-center gap-2">
-            <RefreshCcw className="h-4 w-4" />
+            <Globe className="h-4 w-4" />
             雲端資料管理
           </CardTitle>
           <CardDescription className="text-primary/70">
@@ -476,23 +476,23 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             若您在 Firebase Console 看到舊訂單殘留，或需要手動重設雲端狀態（不影響本地已收割資料），請使用此功能。
           </p>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="default" className="w-full bg-primary hover:bg-primary/90">
+              <Button variant="default" className="w-full bg-primary hover:bg-primary/90 font-bold">
                 <Trash2 className="h-4 w-4 mr-2" />
                 一鍵清空雲端訂單 (Firestore)
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent className="z-[100]">
               <AlertDialogHeader>
-                <AlertDialogTitle>確定要清空雲端資料嗎？</AlertDialogTitle>
+                <AlertDialogTitle>確定要重設雲端狀態嗎？</AlertDialogTitle>
                 <AlertDialogDescription>
-                  這將會「徹底刪除」雲端資料庫中的所有訂單紀錄與處理紀錄。
+                  這將會「徹底刪除」雲端資料庫中的所有訂單紀錄、封存紀錄與已處理標記。
                   <br /><br />
-                  <span className="text-destructive font-bold">※ 此操作不可撤銷，請確認您已完成匯出或收割。</span>
+                  <span className="text-destructive font-bold">※ 此操作不可撤銷，請確認您已完成匯出或不再需要這些雲端緩衝資料。</span>
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -500,10 +500,12 @@ export function SettingsPage() {
                 <AlertDialogAction 
                   onClick={async () => {
                     try {
+                      setIsSyncing(true);
                       const ts = Math.floor(Date.now() / 1000).toString()
-                      const sig = await generateAdminSignature(useAppStore.getState().adminSecret, ts)
+                      const sig = await generateAdminSignature(adminSecret, ts)
                       
-                      const res = await fetch(`${backendUrl}/api/seller/orders`, { 
+                      // 🚀 使用 force=true 強制清空所有雲端資料 (含 archived_orders)
+                      const res = await fetch(`${backendUrl}/api/seller/orders?force=true`, { 
                         method: "DELETE",
                         headers: {
                           "X-Admin-Signature": sig,
@@ -513,17 +515,17 @@ export function SettingsPage() {
                       
                       if (res.ok) {
                         const data = await res.json()
-                        toast({ title: "清空成功", description: `已刪除 ${data.count} 筆雲端紀錄` })
-                      } else if (res.status === 403) {
-                        toast({ title: "權限錯誤 (403)", description: "管理員金鑰不正確或時間過期", variant: "destructive" })
+                        toast({ title: "清空成功", description: `已重設雲端緩衝區並刪除 ${data.count} 筆紀錄` })
                       } else {
                         throw new Error("伺服器回應錯誤")
                       }
                     } catch (e) {
                       toast({ title: "清空失敗", description: "無法連線至後端伺服器或簽名錯誤", variant: "destructive" })
+                    } finally {
+                      setIsSyncing(false);
                     }
                   }}
-                  className="bg-primary text-primary-foreground"
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
                   確認清空
                 </AlertDialogAction>
