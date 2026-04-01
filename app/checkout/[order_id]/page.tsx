@@ -95,8 +95,11 @@ export default function CheckoutPage() {
         }
         
         setOrder(data)
-        // 預填買家姓名
-        setFormData(prev => ({ ...prev, buyer_name: data.fb_user_name || "" }))
+        // 🚀 僅在目前姓名為空時才預填 FB 名稱，避免覆蓋 localStorage 恢復的資料
+        setFormData(prev => ({ 
+          ...prev, 
+          buyer_name: prev.buyer_name || data.fb_user_name || "" 
+        }))
       } catch (err: any) {
         console.error(`[Checkout] Fetch failed for ${backendUrl}/api/checkout/${orderId}:`, err);
         setError(err.message)
