@@ -56,49 +56,48 @@ def _load_stores_into_memory():
         print(msg)
         config.LAST_EVENTS.insert(0, {"time": "error", "content": msg})
 
-# Removed module-level call to prevent hangs during import
 # _load_stores_into_memory()
-
 
 def _fuzzy_find_store(clean_name: str) -> Optional[dict]:
     """從記憶體索引中模糊搜尋門市名稱，回傳最佳匹配"""
-    if not clean_name or not _STORE_BY_NAME:
-        return None
+    import difflib
     
-    # 1. 精確匹配
+    # 0. 基礎清理 (移除不可見字元與各類空白)
+    clean_name = re.sub(r'[^\w\u4e00-\u9fa5]', '', clean_name)
+    # 移除門市冗餘字以便比對
+    core_name = re.sub(r'[門市分店店]', '', clean_name)
+    
+    # 1. 核心店名匹配 (優先)
+    if core_name in _STORE_BY_NAME:
+        sid = _STORE_BY_NAME[core_name]
+        return {**_STORE_BY_ID[sid], "id": sid}
+    
+    # 2. 精確匹配 (原本的完整店名)
     if clean_name in _STORE_BY_NAME:
         sid = _STORE_BY_NAME[clean_name]
         return {**_STORE_BY_ID[sid], "id": sid}
     
-    # 使用字元重合度 (Intersection over Union) 進行評分
     best_match = None
     best_score = 0.0
     
+    # 3. 使用 difflib 進行序列比對 (處理如 旗 vs 嵐 等錯字)
     for name, sid in _STORE_BY_NAME.items():
-        score = 0.0
+        s_name_core = re.sub(r'[門市分店店]', '', name)
         
-        # 移除門市冗餘字 (店名核心)
-        s_name_core = name
-        for w in ["門市", "分店", "店"]:
-            s_name_core = s_name_core.replace(w, "")
+        # 使用 SequenceMatcher 計算相似度 (0.0 到 1.0)
+        score = difflib.SequenceMatcher(None, core_name, s_name_core).ratio()
+        
+        # 如果包含關係非常明顯，給予額外加分
+        if s_name_core in core_name or core_name in s_name_core:
+            score = max(score, 0.75)
             
-        # 1. 核心店名精確包含
-        if s_name_core in clean_name or clean_name in s_name_core:
-            # 依據字數比例給分
-            ratio = min(len(s_name_core), len(clean_name)) / max(len(s_name_core), len(clean_name))
-            score = 0.6 + (0.4 * ratio)
-        else:
-            # 2. 字元集重合 (處理錯字或部分缺失)
-            set_c = set(clean_name)
-            set_s = set(s_name_core)
-            if len(set_c & set_s) >= 2:
-                score = len(set_c & set_s) / len(set_c | set_s)
-        
         if score > best_score:
             best_score = score
             best_match = {**_STORE_BY_ID[sid], "id": sid}
     
-    # 閾值設定為 0.7 (確保準確性)
+    if best_score < 0.7:
+        print(f"[STORE] Fuzzy match failed for '{core_name}' (Best score: {best_score:.2f})")
+    
     return best_match if best_score >= 0.7 else None
 
 
@@ -112,33 +111,33 @@ async def resolve_store_info(raw_info: str) -> str:
     if not raw_info:
         return raw_info
     
-    print(f"[STORE] Resolving: '{raw_info}'")
-    
     # 必要時重新載入
     if not _STORE_BY_ID:
         _load_stores_into_memory()
     
     # 1. 已有 6 碼數字 → 直接查記憶體
-    id_match = re.search(r'\d{6}', raw_info)
+    id_match = re.search(r'\b\d{6}\b', raw_info) # 加上 \b 確保精確 6 位
     if id_match:
         store_id = id_match.group(0)
         store = _STORE_BY_ID.get(store_id)
         if store:
-            return f"{store_id} {store.get('name', '')}"
-        return store_id
+            result = f"{store_id} {store.get('name', '')}"
+            print(f"[STORE] Matched by ID: {raw_info} -> {result}")
+            return result
     
     # 2. 清理店名
     clean_name = raw_info
-    for remove_word in ["7-ELEVEN", "7-11", "7ELEVEN", "SEVEN ELEVEN", "門市", "分店", "店", "(", ")", "（", "）", " "]:
+    # 移除常見雜訊
+    for remove_word in ["7-ELEVEN", "7-11", "7ELEVEN", "SEVEN ELEVEN", "門市", "分店", "店", "(", ")", "（", "）", " ", "　"]:
         clean_name = clean_name.replace(remove_word, "")
-    clean_name = clean_name.strip()
+    clean_name = re.sub(r'[^\w\u4e00-\u9fa5]', '', clean_name).strip()
     
     if clean_name and len(clean_name) >= 2:
         # 3. 記憶體模糊搜尋
         matched = _fuzzy_find_store(clean_name)
         if matched:
             result = f"{matched['id']} {matched.get('name', '')}"
-            print(f"[STORE] Matched: {raw_info} -> {result}")
+            print(f"[STORE] Matched by Name: {raw_info} -> {result}")
             return result
     
     print(f"[STORE] No match, returning raw: '{raw_info}'")
