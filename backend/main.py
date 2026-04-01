@@ -69,11 +69,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="EchoOrder Buffer Gateway", lifespan=lifespan)
 
-# CORS 配置
+# CORS 配置：允許所有來源，但不攜帶憑證（因使用自定義 Header 驗證，需避開通配符 * 與 credentials=True 的衝突）
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -479,10 +479,9 @@ async def export_orders():
     導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel (使用原始模板)
     格式：收件人姓名, 收件人手機, 取貨門市店號, 訂單金額, 商品名稱, 收件人Email, 備註
     """
-    # [CRITICAL] 使用絕對路徑確保在不同環境 (本機/Render) 都能找到模板
+    # [CRITICAL] 模板路徑優化：移動至 assets 子目錄以確保 Render 構建時能正確包含
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    template_path = os.path.join(project_root, "賣貨便_訂單匯入.xlsm")
+    template_path = os.path.join(current_dir, "assets", "template.xlsm")
     
     output = io.BytesIO()
     
