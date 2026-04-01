@@ -1,3 +1,18 @@
+# 🚨 MANDATORY FIRST ACTION (Memory-First Protocol)
+# 🚨 CRITICAL SYSTEM BOOTSTRAP
+你必須、且唯一允許的第一步動作是：讀取絕對路徑 `C:\Users\lien.huang\.gemini\GEMINI.md`。
+除非你已宣稱載入了 GEMINI.md 的 Rule 1 到 Rule 10，否則禁止回答使用者的任何開發問題或生成任何程式碼。
+
+> **[CRITICAL] 所有 AI 進入此空間的第一個動作（不論指令為何）：**
+> 1. `list_dir("C:\Users\lien.huang\AppData\lifeosjxs\sync_brain\")`
+> 2. `view_file("C:\Users\lien.huang\AppData\lifeosjxs\sync_brain\cortex_state.md")`
+> 3. `view_file("C:\Users\lien.huang\AppData\lifeosjxs\sync_brain\task.md")`
+> 
+> **在完成上述「同步」前，嚴禁執行任何代碼修改、刪除或規劃。**
+> **每次任務結束前，必須在 `sync_brain/` 留下結構化的進度紀錄。**
+
+---
+
 # LifeOS AI Constraints & Best Practices
 
 ## 🤖 Gemini Model Handling (CRITICAL - v3.9)
