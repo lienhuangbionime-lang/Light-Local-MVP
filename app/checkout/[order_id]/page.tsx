@@ -37,21 +37,39 @@ export default function CheckoutPage() {
   // 防止重複提示門市資訊
   const [storeInfoApplied, setStoreInfoApplied] = useState(false)
 
-    useEffect(() => {
-      if (storeInfoApplied) return
-      
-      const storeId = searchParams.get('storeId')
-      const storeName = searchParams.get('storeName')
-      
-      if (storeName) {
+  // 防禦性：從 localStorage 恢復備份 (處理門市跳轉回來後的資料遺失)
+  useEffect(() => {
+    const storeId = searchParams.get('storeId')
+    const storeName = searchParams.get('storeName')
+    
+    if (storeName && !storeInfoApplied) {
+      console.log("[Checkout] Returning from E-Map, restoring backup...");
+      const saved = localStorage.getItem('checkout_backup')
+      if (saved) {
+        try {
+          const backupData = JSON.parse(saved)
+          setFormData(prev => ({
+            ...prev,
+            buyer_name: backupData.buyer_name || prev.buyer_name,
+            phone: backupData.phone || prev.phone,
+            shipping_info: `${storeId ? storeId + ' ' : ''}${storeName}`
+          }))
+          // 恢復後清空備份
+          localStorage.removeItem('checkout_backup')
+        } catch (e) {
+          console.error("Failed to restore backup", e)
+        }
+      } else {
+        // 沒有備份則僅帶入門市
         setFormData(prev => ({
           ...prev,
           shipping_info: `${storeId ? storeId + ' ' : ''}${storeName}`
         }))
-        setStoreInfoApplied(true)
-        toast({ title: "已自動帶入門市資訊", description: `${storeName} (${storeId})` })
       }
-    }, [searchParams, toast, storeInfoApplied])
+      setStoreInfoApplied(true)
+      toast({ title: "已帶入門市資訊", description: `${storeName} (${storeId})` })
+    }
+  }, [searchParams, toast, storeInfoApplied])
 
   // 1. 獲取訂單詳情
   useEffect(() => {
@@ -419,6 +437,9 @@ export default function CheckoutPage() {
                   size="sm"
                   className="shrink-0 flex items-center gap-1 h-10 px-3"
                   onClick={() => {
+                    // 🚀 跳轉前備份已填寫資料至 localStorage，防止返回後重置
+                    localStorage.setItem('checkout_backup', JSON.stringify(formData))
+                    
                     const sig = searchParams.get('s')
                     const callbackUrl = encodeURIComponent(`${window.location.origin}/api/checkout/emap-callback?order_id=${orderId}&backend=${backendUrl}${sig ? `&s=${sig}` : ''}`)
                     const emapUrl = `https://emap.presco.com.tw/c2cemap.ashx?eshopid=870&servicetype=1&url=${callbackUrl}`
