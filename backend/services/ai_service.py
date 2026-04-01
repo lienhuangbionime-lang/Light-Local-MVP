@@ -123,21 +123,29 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 【可用的商品代號列表】：
 {catalog_str}{history_context}
 
-【JSON 格式要求】：
+【JSON 格式要求 (必須包含所有欄位)】：
 {{
-  "numeric_inventory": "第一步：列出圖中所有 4-10 位的數字串，並註明旁邊看到的文字 (例如: AU-04983860:發票, 244251:店號, 93515313:統編)",
-  "buyer_name": "買家姓名 (規則：1. 若截圖最上方有對話者名稱，請優先提取。2. 名字請【控制在 20 字元內】，若過長請截斷。)",
+  "numeric_inventory": "第一步：列出圖中『所有』看到的 4-10 位數字，並標註它們是什麼。範例：'113年(忽略), 280970(店號, 6位), AU-04983860(發票, 8位), 0912345678(手機)'",
+  "buyer_name": "買家姓名 (規則：1. 若截圖頂部有 Messenger/FB 對話者名稱，請優先提取。2. 名字請【控制在 20 字元內】。)",
   "phone": "電話 (10 碼數字，如 0972907584)",
-  "shipping_info": "7-11 門市資訊提取規則：從 numeric_inventory 中篩選『剛好 6 位』且最靠近『店號』或『7-11』關鍵字的數字。禁止提取 8 位數(發票/統編)或年度(113年)。若同時有店名與6位店號請回傳『店名(店號)』。",
+  "shipping_info": "7-11 門市資訊規則：從 numeric_inventory 中尋找『剛好 6 位』且最靠近『店號』、『7-11』或『門市』文字的數字。禁止提取 8 位發票或 統編。回傳格式：『店名(店號)』或『店號』。",
   "items": [
     {{ "product_code": "代號", "quantity": 數量 }}
   ],
   "is_duplicate": false
 }}
 
-【提取範例】：
-截圖頂部顯示「王小明」，地圖標題「7-ELEVEN 嘉義門市」，下方有手機。
-輸出：{{ "buyer_name": "王小明", "phone": "0912345678", "shipping_info": "嘉義門市", "items": [] }}
+【提取範例 (關鍵在於排除發票年份)】：
+圖片包含：113年01-02月(標題)、王小明(人名)、AU-04983860(發票號)、280970(店號)、0912345678(電話)
+輸出：
+{{
+  "numeric_inventory": "113年(發票年份-排除), AU-04983860(發票-排除), 280970(店號-保留), 0912345678(電話-保留)",
+  "buyer_name": "王小明",
+  "phone": "0912345678",
+  "shipping_info": "280970",
+  "items": [],
+  "is_duplicate": false
+}}
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     
