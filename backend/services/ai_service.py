@@ -73,7 +73,7 @@ def load_ai_knowledge_base() -> str:
     return "尚無外部知識庫資料。"
 
 async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
-    """使用 Gemma 3 27B 進行初步診斷與 FAQ 回覆 (接待員角色 - 額度高)"""
+    """使用 Gemma 3 27B IT 進行初步診斷與 FAQ 回覆 (接待員角色)"""
     kb_content = load_ai_knowledge_base()
     
     system_prompt = f"""
@@ -100,7 +100,7 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
 }}
 """
     contents = [{"parts": [{"text": system_prompt + f"\n\n買家留言：\n{text_content}"}]}]
-    text_out = await call_ai_studio("gemma-3-27b", contents) # 預設使用 Gemma 3
+    text_out = await call_ai_studio("gemma-3-27b-it", contents) # 預設使用 Gemma 3 IT
     
     if text_out:
         json_match = re.search(r'\{.*\}', text_out, re.DOTALL)
@@ -111,41 +111,37 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
     return None
 
 async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[str] = None, mime_type: str = "image/jpeg", system_prompt: Optional[str] = None, history: Optional[str] = None) -> Optional[Dict]:
-    """使用 Gemini 2.0 Flash 進行深度解析 (主管角色 - 聰明且支援圖片辨識)"""
+    """使用 Gemma 3 27B IT 進行深度解析 (主管角色 - 支援圖片辨識)"""
     catalog_str = "\n".join([f"- {code}: {name}" for code, name in ACTIVE_PRODUCTS.items()])
     history_context = f"\n\n【該買家近期訂單歷史】：\n{history}" if history else ""
     
     default_prompt = f"""
-你是一位專業的「FB直播 AI 秘書 (Gemma)」。
-請從截圖或文字中提取訂單資訊。
+你是一位專業的「FB直播 AI 秘書」。請從截圖或文字中提取訂單資訊。
 請【嚴格回傳 JSON】，不要包含任何描述文字或 Markdown。
 
-【可用的商品代號列表】：
-{catalog_str}{history_context}
+【思考步驟】：
+1. 觀察截圖文字，過濾年份、發票號碼等雜訊。
+2. 提取姓名、電話、6碼門市店號。
+3. 輸出 JSON。
 
-【JSON 格式要求 (必須包含所有欄位)】：
+【商品目錄】：
+{catalog_str}
+{history_context}
+
+【JSON 格式要求】：
 {{
-  "numeric_inventory": "第一步[v2.ocr.0402]：列出圖中指令看到的『所有』4-10 位數字，並標註類型。範例：'113年(排除), 280970(店號, 6位), AU-04983860(發票, 8位)'",
-  "buyer_name": "買家姓名 (規則：1. 若截圖頂部有對話者名稱，請優先提取。2. 名字請【控制在 20 字元內】。)",
-  "phone": "電話 (10 碼數字，如 0972907584)",
-  "shipping_info": "7-11 門市資訊規則：從 numeric_inventory 中尋找『剛好 6 位』且最靠近『店號』或『7-11』關鍵字的數字。禁止提取 8 位發票或 統編。回傳格式：『店名(店號)』或『店號』。",
-  "items": [
-    {{ "product_code": "代號", "quantity": 數量 }}
-  ],
+  "reasoning": "簡述提取過程",
+  "buyer_name": "姓名 (20字內)",
+  "phone": "10碼手機",
+  "shipping_info": "6碼門市店號",
+  "items": [{{ "product_code": "代號", "quantity": 數量 }}],
   "is_duplicate": false
 }}
 
-【提取範例 (關鍵在於排除發票年份)】：
-圖片包含：113年01-02月(標題)、王小明(人名)、AU-04983860(發票號)、280970(店號)、0912345678(電話)
-輸出：
-{{
-  "numeric_inventory": "113年(發票年份-排除), AU-04983860(發票-排除), 280970(店號-保留), 0912345678(電話-保留)",
-  "buyer_name": "王小明",
-  "phone": "0912345678",
-  "shipping_info": "280970",
-  "items": [],
-  "is_duplicate": false
-}}
+【提取規則 (嚴格遵守)】：
+- [年份/發票] (如 113年, AU-...)：必須完全排除，不要當作店號或姓名。
+- [店號]：只取 6 位數。若見到 8 位數發票號，嚴禁擷取。
+- [姓名]：優先抓取對話頂部名稱。
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     

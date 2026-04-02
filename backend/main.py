@@ -297,12 +297,20 @@ async def run_harvest(request: Request):
         raise HTTPException(status_code=403, detail="Unauthorized")
         
     count = 0
-    for order in ORDER_POOL.values():
-        if order.status == "PENDING" and order.created_at >= config.SESSION_START_TIME:
+    harvested_list = []
+    # [FIX] 改為收割 CONFIRMED 訂單，並回傳完整物件讓前端扣庫
+    for order in list(config.ORDER_POOL.values()):
+        if order.status == "CONFIRMED":
             order.status = "HARVESTED"
-            await save_orders(order_id=order.order_id)
+            await firebase.save_orders(order_id=order.order_id)
+            harvested_list.append(order.__dict__)
             count += 1
-    return {"status": "success", "harvested": count}
+    
+    return {
+        "status": "success", 
+        "harvested": count, 
+        "harvested_orders": harvested_list
+    }
 
 @app.delete("/api/seller/orders")
 async def clear_orders_endpoint(request: Request, force: bool = False):
@@ -578,6 +586,9 @@ async def export_orders():
     導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel (使用原始模板)
     格式：收件人姓名, 收件人手機, 取貨門市店號, 訂單金額, 商品名稱, 收件人Email, 備註
     """
+    # 🚀 匯出前強制與雲端同步，確保抓到最新的 CONFIRMED 訂單 (含已移至 archived_orders 的單子)
+    await sync_state_from_cloud(sync_orders=True)
+
     # [CRITICAL] 模板路徑優化：移動至 assets 子目錄以確保 Render 構建時能正確包含
     current_dir = os.path.dirname(os.path.abspath(__file__))
     template_path = os.path.join(current_dir, "assets", "template.xlsm")
@@ -596,12 +607,15 @@ async def export_orders():
             ws = wb.active
             headers = ["收件人姓名", "收件人手機", "取貨門市店號", "訂單金額", "商品名稱", "收件人Email", "備註"]
             for i, h in enumerate(headers): ws.cell(row=6, column=i+1, value=h)
-
-        # --- [MERGE LOGIC] 依照用戶合併訂單，以利計算免運門檻 ---
+        
+        # 🚀 [CONCURRENCY SAFE] 建立唯讀快照，避免遍歷時 ORDER_POOL 發生變動導致 RuntimeError
+        snapshot_orders = list(config.ORDER_POOL.values())
+        
         merged_orders = {}
-        for o in config.ORDER_POOL.values():
-            # 移除時間過濾，允許跨場次累積（只要還在封存區就匯出）
-            if o.status not in ["CONFIRMED", "HARVESTED"]: continue
+        for o in snapshot_orders:
+            # 只處理 CONFIRMED, HARVESTED 或有姓名電話的訂單
+            if not (o.fb_user_name or o.buyer_name):
+                continue
             
             # [TRIPLET RULE] 需電話、門市、收件人完全一致才算同一單合併
             b_name = (o.buyer_name or o.fb_user_name).strip()

@@ -206,15 +206,17 @@ async def save_orders(save_config: bool = False, fields: Optional[List[str]] = N
 async def load_orders():
     """啟動時載入所有訂單與設定"""
     try:
-        print("[FIREBASE] 正在同步載入訂單...")
+        print("[FIREBASE] 正在同步載入訂單 (含封存區)...")
         if not db: return
         
         def _load():
             config_doc = db.collection("system").document("config").get()
             docs = db.collection("orders").get()
-            return config_doc, docs
+            # 🚀 同時載入封存區訂單，確保成交單在重啟後依然存在於記憶體中以利匯出
+            arch_docs = db.collection("archived_orders").get()
+            return config_doc, docs, arch_docs
             
-        config_doc, docs = await asyncio.to_thread(_load)
+        config_doc, docs, arch_docs = await asyncio.to_thread(_load)
 
         if config_doc.exists:
             data = config_doc.to_dict()
@@ -225,9 +227,9 @@ async def load_orders():
             config.SESSION_START_TIME = data.get("session_start_time", 0.0)
             config.CURRENT_PAGE_ID = data.get("fb_page_id", "")
         
-        for doc in docs:
+        for doc in (list(docs) + list(arch_docs)):
             config.ORDER_POOL[doc.id] = Order(**doc.to_dict())
-        print(f"[FIREBASE] 已載入 {len(config.ORDER_POOL)} 筆訂單")
+        print(f"[FIREBASE] 已載入 {len(config.ORDER_POOL)} 筆訂單 (含封存)")
     except Exception as e:
         print(f"[ERROR] load_orders 失敗: {e}")
 
