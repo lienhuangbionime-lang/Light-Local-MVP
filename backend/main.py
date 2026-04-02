@@ -299,11 +299,13 @@ async def run_harvest(request: Request):
     count = 0
     harvested_list = []
     # [FIX] 改為收割 CONFIRMED 訂單，並回傳完整物件讓前端扣庫
+    # [REFINEMENT] 只要有完整聯絡資訊（姓名、手機、門市），無論狀態是 CONFIRMED 還是 PENDING，都允許收割
     for order in list(config.ORDER_POOL.values()):
-        if order.status == "CONFIRMED":
+        has_info = order.buyer_name and order.phone and order.shipping_info
+        if order.status == "CONFIRMED" or (order.status == "PENDING" and has_info):
             order.status = "HARVESTED"
-            await firebase.save_orders(order_id=order.order_id)
-            harvested_list.append(order.__dict__)
+            await save_orders(order_id=order.order_id)
+            harvested_list.append(order.model_dump() if hasattr(order, 'model_dump') else order.dict())
             count += 1
     
     return {
@@ -549,13 +551,14 @@ async def recover_order(data: Dict):
     緊急補單功能：手動恢復遺失的 PENDING 訂單
     payload: { admin_secret, order_id, buyer_name, items: [{code, qty}] }
     """
-    if data.get("admin_secret") != ADMIN_SECRET:
+    if data.get("admin_secret") != config.ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="Forbidden")
         
     order_id = data.get("order_id")
     if not order_id: return {"status": "error", "message": "Missing order_id"}
     
     order_items = []
+    from backend.models.schemas import OrderItem
     for it in data.get("items", []):
         code = it.get("code", "").upper()
         qty = it.get("qty", 1)
@@ -583,112 +586,91 @@ async def recover_order(data: Dict):
 @app.get("/api/seller/orders/export_xlsx")
 async def export_orders():
     """
-    導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel (使用原始模板)
-    格式：收件人姓名, 收件人手機, 取貨門市店號, 訂單金額, 商品名稱, 收件人Email, 備註
+    導出符合 7-11 賣貨便 (MyShip) 批量進貨格式的 Excel
+    格式：收件人姓名, 收件人手機, 取貨門市店號, 溫層, 商品名稱, 訂單金額(代收), 運費金額
     """
-    # 🚀 匯出前強制與雲端同步，確保抓到最新的 CONFIRMED 訂單 (含已移至 archived_orders 的單子)
     await sync_state_from_cloud(sync_orders=True)
 
-    # [CRITICAL] 模板路徑優化：移動至 assets 子目錄以確保 Render 構建時能正確包含
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    template_path = os.path.join(current_dir, "assets", "template.xlsm")
-    
     output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    worksheet = workbook.add_worksheet("7-11 批次進貨")
     
+    header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+    data_fmt = workbook.add_format({'border': 1})
+    
+    headers = ["取件人姓名", "取件人手機", "取貨門市店號", "溫層", "商品名稱", "訂單金額(代收)", "運費金額"]
+    for i, h in enumerate(headers):
+        worksheet.write(0, i, h, header_fmt)
+    
+    worksheet.set_column('A:B', 15)
+    worksheet.set_column('C:C', 12)
+    worksheet.set_column('E:E', 40)
+    worksheet.set_column('F:G', 12)
+
     try:
-        import openpyxl
-        # 載入現有模板
-        if os.path.exists(template_path):
-            wb = openpyxl.load_workbook(template_path, keep_vba=True)
-            ws = wb.active # 假設第一個分頁是匯入頁
-        else:
-            # Fallback to creating a new one if template is missing
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            headers = ["收件人姓名", "收件人手機", "取貨門市店號", "訂單金額", "商品名稱", "收件人Email", "備註"]
-            for i, h in enumerate(headers): ws.cell(row=6, column=i+1, value=h)
-        
-        # 🚀 [CONCURRENCY SAFE] 建立唯讀快照，避免遍歷時 ORDER_POOL 發生變動導致 RuntimeError
         snapshot_orders = list(config.ORDER_POOL.values())
-        
         merged_orders = {}
         for o in snapshot_orders:
-            # 只處理 CONFIRMED, HARVESTED 或有姓名電話的訂單
-            if not (o.fb_user_name or o.buyer_name):
+            has_info = o.buyer_name and o.phone and o.shipping_info
+            if not (o.status == "CONFIRMED" or o.status == "HARVESTED" or has_info):
                 continue
             
-            # [TRIPLET RULE] 需電話、門市、收件人完全一致才算同一單合併
-            b_name = (o.buyer_name or o.fb_user_name).strip()
-            phone = (o.phone or "NO_PHONE").strip()
-            store = (o.shipping_info or "NO_STORE").strip()
+            b_name = (o.buyer_name or o.fb_user_name or "未命名").strip()
+            phone = (o.phone or "").strip()
+            store = (o.shipping_info or "").strip()
             key = f"{phone}_{store}_{b_name}"
             
             if key not in merged_orders:
                 merged_orders[key] = {
                     "buyer_name": b_name,
-                    "phone": o.phone,
-                    "shipping_info": o.shipping_info,
-                    "items": [],
-                    "shipping_fee": config.SHIPPING_FEE,
-                    "free_shipping_threshold": config.FREE_SHIPPING_THRESHOLD
+                    "phone": phone,
+                    "shipping_info": store,
+                    "items": []
                 }
-            # 合併品項
             merged_orders[key]["items"].extend(o.items)
-            # 門市資訊以最新（或有填寫）的為準
-            if o.shipping_info: merged_orders[key]["shipping_info"] = o.shipping_info
-            if o.phone: merged_orders[key]["phone"] = o.phone
-            if o.buyer_name: merged_orders[key]["buyer_name"] = o.buyer_name
 
-        row = 7 # 從第 7 列開始填入
+        row = 1
+        platform_shipping = config.PLATFORM_SHIPPING_FEE
+        
         for key, data in merged_orders.items():
-            # 1. 計算金額 (以合併後的總件數判斷免運)
             items_price = sum((item.price or 0) * item.quantity for item in data["items"])
             total_qty = sum(item.quantity for item in data["items"])
-
-            # [LOGISTICS] 核心運費規則
-            # 1. 湊不到免運門檻 => 買家付 (ItemsSum + BUYER_SHIPPING_FEE)
-            # 2. 湊到免運門檻 => 買家付 (ItemsSum)
-            # Excel 拆分均為 (Total - PLATFORM_SHIPPING_FEE) 與 (PLATFORM_SHIPPING_FEE)
+            
             is_free = total_qty >= config.FREE_SHIPPING_THRESHOLD
             total_shipping_charged = 0 if is_free else config.BUYER_SHIPPING_FEE
             total_amount = int(round(items_price + total_shipping_charged))
-            platform_shipping = config.PLATFORM_SHIPPING_FEE
             
-            # 2. 彙整商品名稱 (合併後顯示所有品項)
             from collections import Counter
             counts = Counter()
             for i in data["items"]:
-                counts[i.product_code] += i.quantity
+                counts[i.product_code or "未知"] += i.quantity
             items_summary = ", ".join([f"{code}x{qty}" for code, qty in counts.items()])
             
-            # 3. 提取 6 碼店號
-            store_id = ""
-            if data["shipping_info"]:
-                import re
-                match = re.search(r'\d{6}', data["shipping_info"])
-                store_id = match.group(0) if match else data["shipping_info"]
-
-            # 依照模板欄位填入 (與截圖一致，且符合用戶 290+50 => 302+38 邏輯)
-            platform_shipping = config.PLATFORM_SHIPPING_FEE # 賣貨便平台預設運費
-            ws.cell(row=row, column=1, value=data["buyer_name"])  # 取件人姓名
-            ws.cell(row=row, column=2, value=data["phone"] or "")  # 取件人手機
-            ws.cell(row=row, column=3, value=store_id)                      # 取貨門市
-            ws.cell(row=row, column=4, value="常溫")                        # 溫層
-            ws.cell(row=row, column=5, value=items_summary)                 # 商品
-            ws.cell(row=row, column=6, value=total_amount - platform_shipping) # 訂單金額 (340-38=302)
-            ws.cell(row=row, column=7, value=platform_shipping)             # 運費金額 (38)
+            import re
+            m = re.search(r'\d{6}', data["shipping_info"] or "")
+            store_id = m.group(0) if m else data["shipping_info"]
+            
+            worksheet.write(row, 0, data["buyer_name"], data_fmt)
+            worksheet.write(row, 1, data["phone"], data_fmt)
+            worksheet.write(row, 2, store_id, data_fmt)
+            worksheet.write(row, 3, "常溫", data_fmt)
+            worksheet.write(row, 4, items_summary, data_fmt)
+            worksheet.write(row, 5, max(0, total_amount - platform_shipping), data_fmt)
+            worksheet.write(row, 6, platform_shipping, data_fmt)
             row += 1
-        
-        wb.save(output)
+            
+        workbook.close()
         output.seek(0)
+        
+        filename = f"711_Batch_Import_{time.strftime('%m-%d_%H_%M')}.xlsx"
         return StreamingResponse(
             output, 
-            media_type="application/vnd.ms-excel.sheet.macroEnabled.12",
-            headers={"Content-Disposition": "attachment; filename=711_myship_harvest.xlsm"}
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
         print(f"[EXPORT] Excel 導出失敗: {e}")
-        return {"status": "error", "message": f"Excel 處理失敗: {e}"}
+        return {"status": "error", "message": f"Excel 處理失敗: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn

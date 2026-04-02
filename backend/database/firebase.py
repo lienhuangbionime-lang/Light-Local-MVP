@@ -256,12 +256,14 @@ async def sync_711_stores_from_cloud():
             # 使用 stream() 處理大量資料
             return db.collection("stores_711").stream()
         
-        docs = await asyncio.to_thread(_get_stores)
+        docs = list(await asyncio.to_thread(_get_stores))
+        print(f"[FIREBASE] 雲端查詢完成，收件到 {len(docs)} 個文檔預覽...")
         
         stores_data = {}
         count = 0
         for doc in docs:
             data = doc.to_dict()
+            if not data: continue
             # 格式轉換為本地 store_service 期待的樣子
             stores_data[doc.id] = {
                 "id": doc.id,
@@ -269,7 +271,7 @@ async def sync_711_stores_from_cloud():
                 "address": data.get("address", "")
             }
             count += 1
-            if count % 1000 == 0: print(f"[FIREBASE] 已抓取 {count} 筆門市...")
+            if count % 1000 == 0: print(f"[FIREBASE] 已處理 {count} 筆門市...")
 
         # 儲存到本地 scripts/stores_cloud.json
         import json
@@ -279,7 +281,9 @@ async def sync_711_stores_from_cloud():
         with open(save_path, "w", encoding="utf-8") as f:
             json.dump(stores_data, f, ensure_ascii=False, indent=2)
             
-        print(f"[FIREBASE] 同步完成，共 {count} 筆門市，已存至 {save_path}")
+        print(f"[FIREBASE] 同步成功！共 {count} 筆門市儲存至: {save_path}")
+        if count == 0:
+            print("[WARNING] 注意！雲端 stores_711 集合似乎是空的，請檢查 Firestore 資料架構。")
         return {"status": "success", "count": count}
     except Exception as e:
         print(f"[FIREBASE] 門市同步失敗: {e}")
