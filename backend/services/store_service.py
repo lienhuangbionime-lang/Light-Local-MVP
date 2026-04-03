@@ -114,43 +114,47 @@ def _fuzzy_find_store(clean_name: str) -> Optional[dict]:
 # ─────────────────────────────────────────
 # 主要對外介面：解析門市資訊
 # ─────────────────────────────────────────
-async def resolve_store_info(raw_info: str, numeric_inventory: Optional[str] = None) -> str:
-    """自動解析並轉換門市資訊
-    Args:
-        raw_info: AI 提取的原始資訊 (如 "280970" 或 "旗山旗力")
-        numeric_inventory: (選用) AI 的數字清單，用於救援解析
-    回傳格式: "店號 店名" (如: 280970 旗山旗)
+async def resolve_store_info(raw_info: str, candidates: Optional[list] = None) -> str:
+    """自動解析並轉換門市資訊 (AI+Python 協同增強版)
+    優先順序：1. 精確店名匹配 -> 2. 資料庫店號匹配 -> 3. 模糊店名匹配
     """
     _load_stores_into_memory()
     
-    # 0. 排除極端無效輸入
-    if not raw_info and not numeric_inventory:
+    all_candidates = candidates or []
+    if raw_info and raw_info not in all_candidates:
+        all_candidates.insert(0, raw_info)
+    
+    if not all_candidates:
         return ""
-    
-    # 1. 尋找精確 6 位數店號
-    def find_6_digits(text: str) -> Optional[str]:
-        if not text: return None
-        match = re.search(r'\b\d{6}\b', text.replace("-", ""))
-        return match.group(0) if match else None
 
-    # 優先從 raw_info 找，找不到再從 inventory 找
-    target_id = find_6_digits(raw_info)
-    if not target_id and numeric_inventory:
-        target_id = find_6_digits(numeric_inventory)
-        if target_id: print(f"[STORE] Rescue matched ID: {target_id}")
+    # 1. 第一階段：精確店名匹配 (優先於店號)
+    for cand in all_candidates:
+        clean_name = str(cand).strip()
+        for noise in ["7-ELEVEN", "7-11", "711", "門市", "店"]:
+            clean_name = clean_name.replace(noise, "")
+        clean_name = re.sub(r'[^\w\u4e00-\u9fa5]', '', clean_name).strip()
+        
+        if clean_name in _STORE_BY_NAME:
+            sid = _STORE_BY_NAME[clean_name]
+            store = _STORE_BY_ID[sid]
+            print(f"[STORE] Best Match (Exact Name): {clean_name} -> {sid}")
+            return f"{sid} {store['name']}"
 
-    # 2. 如果有店號，直接查表
-    if target_id and target_id in _STORE_BY_ID:
-        store = _STORE_BY_ID[target_id]
-        result = f"{target_id} {store['name']}"
-        print(f"[STORE] Matched by ID: {target_id} -> {result}")
-        return result
-    
-    # 3. 如果沒店號，嘗試店名模糊比對
-    if raw_info:
-        # 清理字樣 (移除 7-11, 門市, 括號等)
-        clean_name = raw_info
-        for noise in ["7-ELEVEN", "7-11", "711", "門市", "店", "(", ")", "（", "）", " ", "　"]:
+    # 2. 第二階段：驗證店號 (必須在資料庫中)
+    for cand in all_candidates:
+        cand_str = str(cand).replace("-", "").strip()
+        m = re.search(r'\b\d{6}\b', cand_str)
+        if m:
+            sid = m.group(0)
+            if sid in _STORE_BY_ID:
+                store = _STORE_BY_ID[sid]
+                print(f"[STORE] Match by Verified ID: {sid} -> {store['name']}")
+                return f"{sid} {store['name']}"
+
+    # 3. 第三階段：模糊店名比對
+    for cand in all_candidates:
+        clean_name = str(cand)
+        for noise in ["7-ELEVEN", "7-11", "711", "門市", "店"]:
             clean_name = clean_name.replace(noise, "")
         clean_name = re.sub(r'[^\w\u4e00-\u9fa5]', '', clean_name).strip()
         
@@ -158,15 +162,11 @@ async def resolve_store_info(raw_info: str, numeric_inventory: Optional[str] = N
             matched = _fuzzy_find_store(clean_name)
             if matched:
                 result = f"{matched['id']} {matched['name']}"
-                msg = f"[STORE] Match: '{clean_name}' -> {result}"
-                print(msg)
-                config.LAST_EVENTS.insert(0, {"time": "store", "content": msg})
+                print(f"[STORE] Match by Fuzzy Name: '{clean_name}' -> {result}")
                 return result
-    
-    msg = f"[STORE] No match for: '{raw_info}'"
-    print(msg)
-    config.LAST_EVENTS.insert(0, {"time": "store_fail", "content": msg})
-    return raw_info if raw_info else ""
+
+    print(f"[STORE] No match found for candidates: {all_candidates}")
+    return ""
 
 
 # 下面是備用的向量搜尋與同步任務

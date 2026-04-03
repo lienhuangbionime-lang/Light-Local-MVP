@@ -178,7 +178,7 @@ export default function CheckoutPage() {
       })
       
       const result = await res.json()
-      if (result.status === "success") {
+      if (result.status === "success" && result.data) {
         const { buyer_name, phone, shipping_info } = result.data
         setFormData(prev => ({
           ...prev,

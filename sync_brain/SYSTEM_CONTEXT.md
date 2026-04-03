@@ -39,9 +39,10 @@
   - **巨集防護**: 使用 `openpyxl` 確保 `.xlsm` 模板功能與 7-11 匯入巨集不受損。
 
 ## 🚦 開發原則與限制
-- **純本地儲存**: 絕對禁止引入 Supabase, Prisma 或其他伺服器資料庫。所有業務資料限於 `LocalStorage`。
-- **圖片「閱後即焚」**: 圖片送到 `/api/ocr` 辨識完畢後，即刻丟棄，不可存入 LocalStorage 或檔案系統，避免爆容量。
-- **狀態管理集中化**: 所有的商品、批次、攤提狀態必須放在 Zustand Store，並使用 JSON 序列化持久存儲。
+- **本地優先 與 Firebase 同步**: 專案採用 `Firebase Firestore` 作為跨設備資料同步與門市資料庫的核心真理。
+- **純本地操作體驗**: 前端業務狀態應優先在 `LocalStorage` 緩存/持久化，確保離線可用性與極致流暢度。
+- **圖片「閱後即焚」**: 圖片送到 `/api/ocr` 辨識完畢後，即刻丟棄，不可存入 LocalStorage 或 Firestore，避免儲存負擔。
+- **狀態管理**: 全域狀態集中在 `Zustand`，並依據欄位屬性決定是存於 `LocalStorage` 或同步至 `Firestore`。
 
 ## 🛠️ 開發環境備註 (Development Environment)
 - **Node.js/npm Path**: `C:\Users\lien.huang\AppData\node` (未加入 PATH，需手動指定)。
@@ -53,15 +54,12 @@
 - **FB API Version**: v25.0。
 - **Render Backend**: `https://light-local-mvp.onrender.com/` (由 `main.py` 驅動)。
 
-## 🛑 核心開發禁令 (Critical Stability Rules)
-1. **禁止 Emojis**: 後端 Python `print()` 絕對禁止使用 Emoji，避免 Windows `cp950` 編碼崩潰。
-2. **禁止 localhost**: 在 Next.js 請求或後端呼叫中，必須使用 `127.0.0.1` 取代 `localhost`，避免 Windows IPv6 造成的連線延遲/斷開。
-3. **路項修正**: 雲端部署 (Render) 若發生 `ModuleNotFoundError`，必須在 `main.py` 第 1 行注入 `sys.path` 修正。
-4. **直播 UI 淨化**: 直播介面（Live Page）必須保持極簡，禁止在 Diagnostic Console 放置不必要的測試按鈕。
-5. **運費延遲觸發**: 運費僅在「Excel 導出」階段計算與加入，結帳頁面應保持純商品金額。
-6. **CORS 安全規格**: 使用 `allow_origins=["*"]` 時，必須將 `allow_credentials` 設為 `False`，避免瀏覽器攔截 Preflight 請求。
-7. **端點對齊 (Alignment)**: 所有資料獲取類端點 (如：`/stats`, `/config`) 必須統一使用 **GET** 方法，確保與前端 Fetch 邏輯一致。
-8. **AI 視覺權重**: 7-11 門市辨識應優先匹配包含 「7-ELEVEN」 與 「門市」 字樣的行（如地圖標題），次級匹配收據元數據。
+## 🛡️ 穩定性與服務規範 (Stability & Security)
+1. **CP950 Emoji 禁令**: Python `print()` 絕對禁止使用 Emoji，避免 Windows 本端 `cp950` 編碼崩潰。
+2. **IPv6 localhost 修正**: Next.js 請求或後端呼叫必須使用 `127.0.0.1` 取代 `localhost`，避免連線掛掉。
+3. **CORS 安全規格**: 雲端環境 `allow_origins=["*"]` 需配合 `allow_credentials=False`。
+4. **端點一致性**: 獲取資料類端點 (如：`/stats`) 統一使用 **GET**，與前端 Fetch 對齊。
+8. **7-11 辨識協同 (Synergy)**: 採用「AI 發現 + Python 驗證」模式。優先匹配圖片中的「精準店名」（如：圓興），次級匹配 6 位數店號。所有店號必須通過 `stores_cloud.json` 實體資料庫驗證，不准跳過後端校對直接存入。
 
 ---
 **Last Updated**: 2026-04-03 | **Status**: OpenClaw Launcher Integration Complete

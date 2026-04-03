@@ -390,23 +390,22 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         if not image_b64:
              return {"status": "error", "message": "未接收到圖片資料"}
 
-        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片或文字中【精確】提取收件資訊。
+        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片中【發現】所有可能的收件資訊。
 請【嚴格】回傳以下 JSON 格式。
 
 【規則 (最高優先級)】：
-1. **數字排除**：
-   - 看到「113年」、「114年」等年度資訊：**禁止當作店號**。
-   - 看到「NM-16942488」等電子發票號碼：**禁止當作店號**。
-   - 看到「05-06月」等月份資訊：**禁止當作店號**。
-2. **尋找店號 (6位數)**：優先尋找收據最下方或條碼附近的 6 位純數字 (如 206950)。
-3. **尋找店名**：若為 Google Maps，請提取標題處的獨特名字 (如：旗山旗力、港富)，並排除 "7-ELEVEN" 與 "門市" 贅字。
+1. **多重探測 (Candidates)**：在 `store_candidates` 中列出所有你在圖中看到的「店名」或「6位數字」。
+2. **數字排除**：
+   - 看到「113年」、「114年」等年度資訊：**禁止放入 candidates**。
+   - 看到「NM-16942488」等電子發票號碼：**禁止放入 candidates**。
+3. **店名提取**：請提取如「旗山旗力」、「港富」等獨特名字。
 4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
 
 【JSON 格式要求】：
 {
   "buyer_name": "買家姓名",
   "phone": "10 碼電話",
-  "shipping_info": "6位店號 或 獨特店名 (禁止填寫地址)"
+  "store_candidates": ["店號1", "店名1", "店號2"...]
 }"""
         
         extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
@@ -416,12 +415,15 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
             if "phone" in extracted and extracted["phone"]:
                 extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
             
-            # 2. 清理店號 (智慧語意比對)
-            if "shipping_info" in extracted and extracted["shipping_info"]:
-                from backend.services.store_service import resolve_store_info
-                raw_extracted_info = str(extracted["shipping_info"])
-                # 使用向量搜尋或精確比對轉換為 "店號 店名"
-                extracted["shipping_info"] = await resolve_store_info(raw_extracted_info)
+            # 2. 協同辨識門市 (使用 Python 嚴格把關)
+            from backend.services.store_service import resolve_store_info
+            candidates = extracted.get("store_candidates", [])
+            # 也把原本可能被 AI 誤填在 shipping_info 的舊欄位加進去作保險
+            if extracted.get("shipping_info"): candidates.append(extracted["shipping_info"])
+            
+            # 呼叫新版的 resolve_store_info (僅處理店號/店名辨識)
+            verified_store = await resolve_store_info("", candidates=candidates)
+            extracted["shipping_info"] = verified_store
             
             # 3. [PRIME] 瞬間存入 Firebase (PENDING 狀態)
             # 這能解決使用者「看不見未填單資料」的問題，因為 AI 填完就立刻同步雲端。

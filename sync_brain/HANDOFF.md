@@ -1,39 +1,34 @@
 # 🤝 取貨記帳系統 - Session Handoff
 
 ## 🎯 Current Status (End of Session)
-**Date**: 2026-03-19 (更新於 23:30)
-**Focus**: AI 連結修復, OpenClaw 整合計畫, N+1 穩定化
+**Date**: 2026-04-04 (更新於 02:10)
+**Focus**: 7-11 辨識協同優化 (Synergy), sync_brain 瘦身與重整
 
-### ✅ 最新成就總結 (2026-03-19)
+### ✅ 最新成就總結 (2026-04-04)
 
-#### 1. AI 連結與秘書功能修復
-- **AI 結帳連結**: 現在 AI 秘書自動補單後，回覆訊息會帶上 **「安全結帳連結」** (含 HMAC 簽名)。
-- **函數崩潰修正**: 解決了 `order_service.py` 中 `handle_admin_secretarial_work` 參數不匹配與變數未定義的問題，確保背景處理不報錯。
-- **Regex 強度**: 已確認支援 `A1+1` 與 `蘋果+1` 等混合中英文的 N+1 格式。
+#### 1. 7-11 辨識協同機制 (Synergy Model)
+- **店名優先 (Name-over-ID)**: 修正了店號噪訊 (如 206950) 覆蓋正確店名的問題。現在系統優先匹配「精準店名」。
+- **嚴格校對 (Strict DB Validation)**: 所有 AI 提取的 6 位數店號皆須通過後端 `stores_cloud.json` 驗證，不准跳過校對。
+- **UI 反饋**: 辨識成功後顯示成功 Toast，失敗則導向手動輸入。
 
-#### 2. 開發生態系 & 記憶持久化
-- **OpenClaw 計畫**: 制定了 `openclaw_plan.md`，將引導 AI 協助開發 `C:\Users\lien.huang` 下的所有專案。
-- **Skill 部署**: 已將 `get-api-docs` 技能安裝至專案目錄，支援即時抓取最新文件。
-- **記憶同步**: 已更新 `sync_brain` 全系列檔案，確保對話上下文永不丟失。
+#### 2. sync_brain 大掃除
+- **文檔合併**: 將分散的 `GUIDANCE` 與 `SUPPLEMENTAL` 規則合併進 `SYSTEM_CONTEXT.md`。
+- **歷史封存**: 將過期的 `REVIEW` 檔案移入 `history/` 子目錄。
+- **真理更新**: 更新 `HUMAN_AI_AGREEMENT.md` 與 `SYSTEM_CONTEXT.md` 以記錄最新的協同辨識協定。
 
 ---
 
 ## ⚡ Next Steps for Next Session
 
-**🔴 P1 — 立即完成**
-- [ ] **環境部署**: 在本地執行 `npm install` 解決 Next.js 16 依賴問題。
-- [ ] **OpenClaw 安裝**: 依據 `openclaw_plan.md` 執行全域安裝與 onboard。
+**🔴 P1 — 測試與優化**
+- [ ] **多收據測試**: 測試當一張圖中有多個不同買家的收據時，目前的「店名優先」邏輯是否依然穩健。
+- [ ] **效能監控**: 觀察 7000+ 門市載入記憶體對 Render 免費版 backend 的記憶體壓力。
 
-**🟡 P2 — 本週完成**
-- [ ] **正式開播測試**: 配合粉專進行一次完整的 15 分鐘直播流程測試，驗證 AI 補單連結是否可正常由客戶開啟。
-- [ ] **Yellow/Green Dot 驗收**: 確認補單成功後 UI 顯示黃點，填單後顯示綠點。
-
-**🟢 P3 — 中長期 Roadmap**
-- Phase 2: M2 批次匯率 UI + M3 Gemini Vision 單據辨識
-- Phase 3: M4 物流攤提（件數均攤 + 重量比例攤提）
+**🟡 P2 — 功能擴展**
+- [ ] **其他超商支援**: 若使用者有全家（FamiPort）收據辨識需求，可比照此協同模式實作。
 
 ---
 
 ## 🔒 State Preservation
-系統目前處於「功能修復完成」狀態。AI 補單連結已調通，背景處理函數已穩定。
-`evolution_log.json` 已更新。
+系統目前處於「穩定且具備協同驗證能力」狀態。門市辨識錯誤率已顯著降低。
+`sync_brain` 已完成精簡化，保留最核心的開發憲法與架構圖。
