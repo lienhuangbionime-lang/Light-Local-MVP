@@ -139,6 +139,17 @@ async def resolve_store_info(raw_info: str, candidates: Optional[list] = None) -
     BRAND_NOISE = {"7-ELEVEN", "7-11", "711", "7ELEVEN", "SEVEN ELEVEN"}
     all_candidates = [c for c in all_candidates if str(c).strip().upper() not in BRAND_NOISE]
     
+    # ⬇️ 嚴格規則：純數字的候選值必須剛好 6 位，否則捨棄
+    # (例如 "04983860"=8位, "324"=3位 → 全部捨棄，但含中文的地址不受此限)
+    def _is_valid_candidate(c: str) -> bool:
+        c = str(c).strip()
+        digits_only = re.sub(r'\D', '', c)  # 取出所有數字
+        if c.isdigit():  # 純數字
+            return len(c) == 6  # 必須剛好6位
+        return True  # 含其他字元 (中文地址、店名等) → 保留
+    
+    all_candidates = [c for c in all_candidates if _is_valid_candidate(str(c))]
+    
     if not all_candidates:
         return ""
 
