@@ -415,14 +415,26 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
             if "phone" in extracted and extracted["phone"]:
                 extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
             
-            # 2. 協同辨識門市 (使用 Python 嚴格把關)
-            from backend.services.store_service import resolve_store_info
-            candidates = extracted.get("store_candidates", [])
-            # 也把原本可能被 AI 誤填在 shipping_info 的舊欄位加進去作保險
-            if extracted.get("shipping_info"): candidates.append(extracted["shipping_info"])
+            # 2. [NEW] OCR Two-Step: 先用轉錄文字做 Regex 確定性萃取
+            from backend.services.ai_service import transcribe_image_text
+            from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
+            from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
             
-            # 呼叫新版的 resolve_store_info (僅處理店號/店名辨識)
-            verified_store = await resolve_store_info("", candidates=candidates)
+            ocr_text = await transcribe_image_text(image_b64)
+            ocr_candidates = []
+            if ocr_text:
+                # Regex 找 6 位數店號 (確定性，不會幻覺)
+                ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
+                # 再用店名字典交叉比對 OCR 文字
+                name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
+                ocr_candidates = name_matched_ids + ocr_candidates  # 店名比對優先
+            
+            # 3. 合併：OCR 萃取優先，AI store_candidates 作備援
+            ai_candidates = extracted.get("store_candidates", [])
+            if extracted.get("shipping_info"): ai_candidates.append(extracted["shipping_info"])
+            all_candidates = ocr_candidates + ai_candidates  # OCR 在前，AI 在後
+            
+            verified_store = await resolve_store_info("", candidates=all_candidates)
             extracted["shipping_info"] = verified_store
             
             # 3. [PRIME] 瞬間存入 Firebase (PENDING 狀態)

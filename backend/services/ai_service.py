@@ -52,6 +52,25 @@ async def call_ai_studio(model_name: str, contents: List[Dict]) -> Optional[str]
         print(f"[AI] {model_name} 呼叫異常: {e}")
     return None
 
+async def transcribe_image_text(image_data_base64: str, mime_type: str = "image/jpeg") -> Optional[str]:
+    """Step 1 of two-step OCR: 請 AI 一字不漏地把圖中所有文字轉錄為純文字
+    不做任何解讀，只做文字轉錄，提供給 parse_service.py 做 Regex 萃取
+    """
+    if not config.GEMINI_API_KEY or not image_data_base64:
+        return None
+    
+    ocr_prompt = "請把這張圖片中所有可見的文字，一字不漏地轉錄為純文字。不要翻譯、不要解釋、不要加任何說明，只輸出原始文字內容。"
+    
+    parts = [
+        {"text": ocr_prompt},
+        {"inlineData": {"mimeType": mime_type, "data": image_data_base64}}
+    ]
+    
+    pure_model = config.GEMINI_VISION_MODEL.replace("models/", "")
+    raw_text = await call_ai_studio(pure_model, [{"parts": parts}])
+    print(f"[OCR] 轉錄完成，共 {len(raw_text) if raw_text else 0} 字元")
+    return raw_text
+
 def load_ai_knowledge_base() -> str:
     """從 sync_brain 讀取最新的 FAQ 知識庫內容"""
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # backend/
@@ -136,9 +155,10 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 
 【7-11 門市提取規則 (嚴格遵守)】：
 - [store_candidates 優先搜尋順序]：
-  a. 圖中是否有清晰的 6 位數字（排除年份和8位以上發票號）？有則放入。
-  b. 圖中是否有 7-11 門市名稱（漢字2-4字）？有則放入。
-  c. 圖中是否有完整地址文字？有則完整照抄放入。
+  a. 7-11【電子發票】圖：條碼正下方左側有一個 6 位數字，那就是【門市店號】，優先提取這個！
+  b. 圖中是否有清晰的 6 位數字（排除年份和8位以上發票號）？有則放入。
+  c. 圖中是否有 7-11 門市名稱（漢字2-4字）？有則放入。
+  d. 圖中是否有完整地址文字？有則完整照抄放入。
 - [嚴禁] 把不同位置的數字拼接（例如路段「324」和門牌「173」不可拼成「324173」）。
 - [嚴禁] 把發票號（8位以上，含字母，如 B0-9819498、AU-...）放入 store_candidates。
 - [嚴禁] 把年份（113、2024等）放入 store_candidates。
