@@ -97,6 +97,17 @@ def _fuzzy_find_store(clean_name: str) -> Optional[dict]:
         # 👑 完美包含權重 (如果 AI 抓到的「港富」就在「港富門市」裡，直接 100% 命中)
         if core_name and core_name in s_name_core:
             return {**_STORE_BY_ID[sid], "id": sid}
+
+        # 👑 反向包含權重 (反向: 如果 AI 提供了長地址，而店名 "南勢" 剛好在裡面)
+        # 必須確保店名 >= 2 個字，避免單字店名盲目命中
+        if len(s_name_core) >= 2 and s_name_core in core_name:
+            return {**_STORE_BY_ID[sid], "id": sid}
+            
+        # 🏠 地址精確匹配 (如果 AI 給的是完整或部分地址，且與門市地址高度重合)
+        store_address = _STORE_BY_ID[sid].get("address", "")
+        clean_address = re.sub(r'[^\w\u4e00-\u9fa5]', '', store_address)
+        if len(core_name) >= 6 and (core_name in clean_address or clean_address in core_name):
+            return {**_STORE_BY_ID[sid], "id": sid}
             
         # 4. 使用 difflib 進行序列比對 (處理如 旗 vs 嵐 等錯字)
         score = difflib.SequenceMatcher(None, core_name, s_name_core).ratio()
@@ -166,6 +177,32 @@ async def resolve_store_info(raw_info: str, candidates: Optional[list] = None) -
                 return result
 
     print(f"[STORE] No match found for candidates: {all_candidates}")
+    
+    # 🍁 最終防線 (Fallback)：當資料庫沒有這家店 (例如新店或只給了地址)
+    # 我們不應該回傳空字串把 AI 抓到的有用資訊洗掉
+    INVOICE_KEYWORDS = ["發票", "電子發票", "驗證碼", "交易筆數", "消費金額", "AU-", "NM-", "BN-"]
+    
+    for cand in all_candidates:
+        c_str = str(cand).strip()
+        # 跳過明顯是發票號碼的純 6 碼噪訊
+        if re.fullmatch(r'\d{6}', c_str.replace("-", "")):
+            continue
+        # 跳過包含發票關鍵字的收據文字 (如 Hà Mun 案例)
+        if any(kw in c_str for kw in INVOICE_KEYWORDS):
+            print(f"[STORE] Fallback SKIP (invoice text): {c_str[:60]}")
+            continue
+        # 跳過換行超過 2 次的長文本 (發票收據通常是多行的)
+        if c_str.count('\n') > 2:
+            print(f"[STORE] Fallback SKIP (multi-line text): {c_str[:60]}")
+            continue
+        # 必須包含中文字 (地址或店名) 才放行，避免回傳 7-ELEVEN, B0-9819498 等無用英文與序號
+        has_chinese = bool(re.search(r'[\u4e00-\u9fa5]', c_str))
+        clean_cand = re.sub(r'[^\w\u4e00-\u9fa5]', '', c_str).strip()
+        
+        if has_chinese and len(clean_cand) >= 2:
+            print(f"[STORE] Fallback to raw AI text: {c_str}")
+            return f"❓ {c_str}"
+            
     return ""
 
 

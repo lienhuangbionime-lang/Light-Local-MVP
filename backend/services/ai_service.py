@@ -119,11 +119,6 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 你是一位專業的「FB直播 AI 秘書」。請從截圖或文字中提取訂單資訊。
 請【嚴格回傳 JSON】，不要包含任何描述文字或 Markdown。
 
-【思考步驟】：
-1. 觀察截圖文字，過濾年份、發票號碼等雜訊。
-2. 提取姓名、電話、6碼門市店號。
-3. 輸出 JSON。
-
 【商品目錄】：
 {catalog_str}
 {history_context}
@@ -133,14 +128,21 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
   "reasoning": "簡述提取過程",
   "buyer_name": "姓名 (20字內)",
   "phone": "10碼手機",
-  "shipping_info": "6碼門市店號",
+  "shipping_info": "買家提供的完整地址或門市文字（原文照抄，不要截斷）",
+  "store_candidates": ["完整6位數店號（如229207）", "門市名稱（如隆陞）", "完整地址（如有）"],
   "items": [{{ "product_code": "代號", "quantity": 數量 }}],
   "is_duplicate": false
 }}
 
-【提取規則 (嚴格遵守)】：
-- [年份/發票] (如 113年, AU-...)：必須完全排除，不要當作店號或姓名。
-- [店號]：只取 6 位數。若見到 8 位數發票號，嚴禁擷取。
+【7-11 門市提取規則 (嚴格遵守)】：
+- [store_candidates 優先搜尋順序]：
+  a. 圖中是否有清晰的 6 位數字（排除年份和8位以上發票號）？有則放入。
+  b. 圖中是否有 7-11 門市名稱（漢字2-4字）？有則放入。
+  c. 圖中是否有完整地址文字？有則完整照抄放入。
+- [嚴禁] 把不同位置的數字拼接（例如路段「324」和門牌「173」不可拼成「324173」）。
+- [嚴禁] 把發票號（8位以上，含字母，如 B0-9819498、AU-...）放入 store_candidates。
+- [嚴禁] 把年份（113、2024等）放入 store_candidates。
+- [shipping_info]：照抄買家原始門市/地址文字，不要縮減。
 - [姓名]：優先抓取對話頂部名稱。
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
