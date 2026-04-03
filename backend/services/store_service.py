@@ -135,6 +135,10 @@ async def resolve_store_info(raw_info: str, candidates: Optional[list] = None) -
     if raw_info and raw_info not in all_candidates:
         all_candidates.insert(0, raw_info)
     
+    # ⬇️ 預過濾：去除品牌通用詞彙（不是門市名）
+    BRAND_NOISE = {"7-ELEVEN", "7-11", "711", "7ELEVEN", "SEVEN ELEVEN"}
+    all_candidates = [c for c in all_candidates if str(c).strip().upper() not in BRAND_NOISE]
+    
     if not all_candidates:
         return ""
 
