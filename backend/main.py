@@ -591,23 +591,28 @@ async def export_orders():
     """
     await sync_state_from_cloud(sync_orders=True)
 
-    output = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    worksheet = workbook.add_worksheet("7-11 批次進貨")
+    # [TEMPLATE] 使用用戶提供的賣貨便官方範本
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    template_path = os.path.join(current_dir, "assets", "template.xlsm")
     
-    header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
-    data_fmt = workbook.add_format({'border': 1})
-    
-    headers = ["取件人姓名", "取件人手機", "取貨門市店號", "溫層", "商品名稱", "訂單金額(代收)", "運費金額"]
-    for i, h in enumerate(headers):
-        worksheet.write(0, i, h, header_fmt)
-    
-    worksheet.set_column('A:B', 15)
-    worksheet.set_column('C:C', 12)
-    worksheet.set_column('E:E', 40)
-    worksheet.set_column('F:G', 12)
+    if not os.path.exists(template_path):
+        print(f"[EXPORT] 找不到範本檔案: {template_path}")
+        return {"status": "error", "message": "伺服器遺失 Excel 範本檔案 (template.xlsm)"}
 
+    output = io.BytesIO()
     try:
+        import openpyxl
+        # 載入範本，但不保留 VBA 巨集以加速匯出並產生標準 .xlsx
+        wb = openpyxl.load_workbook(template_path)
+        
+        # 確保分頁名稱正確
+        if "訂單匯入" not in wb.sheetnames:
+            print(f"[EXPORT] 範本格式錯誤，找不到 '訂單匯入' 分頁. 現有分頁: {wb.sheetnames}")
+            return {"status": "error", "message": "Excel 範本格式不符 (缺少 '訂單匯入' 分頁)"}
+            
+        ws = wb["訂單匯入"]
+        
+        # 🚀 [CONCURRENCY SAFE] 建立唯讀快照
         snapshot_orders = list(config.ORDER_POOL.values())
         merged_orders = {}
         for o in snapshot_orders:
@@ -629,7 +634,7 @@ async def export_orders():
                 }
             merged_orders[key]["items"].extend(o.items)
 
-        row = 1
+        current_row = 7 # 根據用戶範本，資料從第 7 列開始
         platform_shipping = config.PLATFORM_SHIPPING_FEE
         
         for key, data in merged_orders.items():
@@ -640,26 +645,30 @@ async def export_orders():
             total_shipping_charged = 0 if is_free else config.BUYER_SHIPPING_FEE
             total_amount = int(round(items_price + total_shipping_charged))
             
+            # 商品彙整
             from collections import Counter
             counts = Counter()
             for i in data["items"]:
                 counts[i.product_code or "未知"] += i.quantity
             items_summary = ", ".join([f"{code}x{qty}" for code, qty in counts.items()])
             
+            # 提取 6 碼門市店號
             import re
             m = re.search(r'\d{6}', data["shipping_info"] or "")
             store_id = m.group(0) if m else data["shipping_info"]
             
-            worksheet.write(row, 0, data["buyer_name"], data_fmt)
-            worksheet.write(row, 1, data["phone"], data_fmt)
-            worksheet.write(row, 2, store_id, data_fmt)
-            worksheet.write(row, 3, "常溫", data_fmt)
-            worksheet.write(row, 4, items_summary, data_fmt)
-            worksheet.write(row, 5, max(0, total_amount - platform_shipping), data_fmt)
-            worksheet.write(row, 6, platform_shipping, data_fmt)
-            row += 1
+            # 寫入 Excel (對齊範本 12 欄位，但只填寫前 7 欄)
+            ws.cell(row=current_row, column=1, value=data["buyer_name"])
+            ws.cell(row=current_row, column=2, value=data["phone"])
+            ws.cell(row=current_row, column=3, value=store_id)
+            ws.cell(row=current_row, column=4, value="常溫")
+            ws.cell(row=current_row, column=5, value=items_summary)
+            # 訂單金額 = 總額 - 平台運費
+            ws.cell(row=current_row, column=6, value=max(0, total_amount - platform_shipping))
+            ws.cell(row=current_row, column=7, value=platform_shipping)
+            current_row += 1
             
-        workbook.close()
+        wb.save(output)
         output.seek(0)
         
         filename = f"711_Batch_Import_{time.strftime('%m-%d_%H_%M')}.xlsx"
