@@ -52,8 +52,9 @@ def get_price_from_rule(rule_str: str, quantity: int) -> int:
 
 def parse_comment(text: str) -> Dict:
     normalized = normalize_text(text)
-    # [FIX] 支援中文字代號 (A-Z, 0-9, 以及常見中文字)
-    pattern = r'([A-Za-z0-9\u4e00-\u9fa5]{1,5})\s*([^\w\s]|[\+\uff0b\u2795])+\s*(\d+)'
+    # [OPTIMIZED REGEX] 支援: A+1, A + 1, A1, A 1, 代號1, 代號 1
+    # 讓符號部分變為選擇性 (*) 並支援空格
+    pattern = r'([A-Za-z0-9\u4e00-\u9fa5]{1,5})\s*([^\w\s]|[\+\uff0b\u2795])*\s*(\d+)'
     matches = re.findall(pattern, normalized)
     
     items = []

@@ -82,3 +82,6 @@ graph TD
 本系統致力於打造一個 **「不需要後端月費、速度極快、隨開即用」** 的服飾業理貨神器。開發 AI 所有的架構提議都必須圍繞著「輕量」與「本地化」這兩個核心價值。
 
 **狀態**：已簽署 (Local-First MVP Pivot)。
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+cd C:\Users\lien.huang\AppData\openclaw
+.\launch-control.ps1  

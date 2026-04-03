@@ -298,11 +298,9 @@ async def run_harvest(request: Request):
         
     count = 0
     harvested_list = []
-    # [FIX] 改為收割 CONFIRMED 訂單，並回傳完整物件讓前端扣庫
-    # [REFINEMENT] 只要有完整聯絡資訊（姓名、手機、門市），無論狀態是 CONFIRMED 還是 PENDING，都允許收割
+    # [FIX] 嚴格僅收割「買家已點過確認」的訂單 (CONFIRMED)
     for order in list(config.ORDER_POOL.values()):
-        has_info = order.buyer_name and order.phone and order.shipping_info
-        if order.status == "CONFIRMED" or (order.status == "PENDING" and has_info):
+        if order.status == "CONFIRMED":
             order.status = "HARVESTED"
             await save_orders(order_id=order.order_id)
             harvested_list.append(order.model_dump() if hasattr(order, 'model_dump') else order.dict())
@@ -393,14 +391,23 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
              return {"status": "error", "message": "未接收到圖片資料"}
 
         prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片或文字中【精確】提取收件資訊。
-請【嚴格】回傳以下 JSON 格式：
+請【嚴格】回傳以下 JSON 格式。
+
+【規則 (最高優先級)】：
+1. **數字排除**：
+   - 看到「113年」、「114年」等年度資訊：**禁止當作店號**。
+   - 看到「NM-16942488」等電子發票號碼：**禁止當作店號**。
+   - 看到「05-06月」等月份資訊：**禁止當作店號**。
+2. **尋找店號 (6位數)**：優先尋找收據最下方或條碼附近的 6 位純數字 (如 206950)。
+3. **尋找店名**：若為 Google Maps，請提取標題處的獨特名字 (如：旗山旗力、港富)，並排除 "7-ELEVEN" 與 "門市" 贅字。
+4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
+
+【JSON 格式要求】：
 {
-  "buyer_name": "買家姓名 (規則：1. 若截圖最上方有對話對象，請優先提取。2. 若有『姓名/門市/手機』則提取姓名)",
-  "phone": "10 碼電話 (如 0972907584)",
-  "shipping_info": "7-11 門市資訊。規則：1. 有店號填店號。2. 包含 Google Maps 或照片則提取顯眼【店名】。3. 禁止地址。"
-}
-範例輸入：[包含頂部名稱 Pham Hoai 與 旗山旗力門市 的截圖]
-範例輸出：{"buyer_name": "Pham Hoai", "phone": "0972907584", "shipping_info": "旗山旗力"}"""
+  "buyer_name": "買家姓名",
+  "phone": "10 碼電話",
+  "shipping_info": "6位店號 或 獨特店名 (禁止填寫地址)"
+}"""
         
         extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
         
@@ -416,8 +423,19 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
                 # 使用向量搜尋或精確比對轉換為 "店號 店名"
                 extracted["shipping_info"] = await resolve_store_info(raw_extracted_info)
             
+            # 3. [PRIME] 瞬間存入 Firebase (PENDING 狀態)
+            # 這能解決使用者「看不見未填單資料」的問題，因為 AI 填完就立刻同步雲端。
+            if order_id in config.ORDER_POOL:
+                 order = config.ORDER_POOL[order_id]
+                 order.buyer_name = extracted.get("buyer_name")
+                 order.phone = extracted.get("phone")
+                 order.shipping_info = extracted.get("shipping_info")
+                 order.status = "PENDING"
+                 from backend.database.firebase import save_orders
+                 await save_orders(order_id=order_id)
+                 print(f"[AI_FILL] Order {order_id} instantly persisted as PENDING.")
+
             print(f"[AI_FILL] Final Parsed Result: {extracted}")
-            config.LAST_EVENTS.insert(0, {"time": "ai_ok", "content": f"AI 填單成功: {extracted.get('buyer_name')} - {extracted.get('shipping_info')}"})
             from backend.database.firebase import save_events
             await save_events()
             return {"status": "success", "data": extracted}
@@ -616,8 +634,8 @@ async def export_orders():
         snapshot_orders = list(config.ORDER_POOL.values())
         merged_orders = {}
         for o in snapshot_orders:
-            has_info = o.buyer_name and o.phone and o.shipping_info
-            if not (o.status == "CONFIRMED" or o.status == "HARVESTED" or has_info):
+            # 🚀 嚴格僅導出「已確認 (CONFIRMED)」的訂單
+            if o.status != "CONFIRMED":
                 continue
             
             b_name = (o.buyer_name or o.fb_user_name or "未命名").strip()

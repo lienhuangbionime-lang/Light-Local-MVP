@@ -162,11 +162,12 @@ export function LivePage() {
                     const cloudOrders = allData.orders || []
                     
                     // 2. 判斷是否需要自癒 (雲端變少或變空了)
-                    const pendingInCloud = cloudOrders.filter((o: any) => o.status === "PENDING" || o.status === "CONFIRMED")
-                    const pendingInMirror = orderMirror.filter((o: any) => o.status === "PENDING" || o.status === "CONFIRMED")
+                    // [FIX] 包含 HARVESTED 狀態，確保收割後 7-11 下載按鈕不會消失
+                    const activeOrdersInCloud = cloudOrders.filter((o: any) => ["PENDING", "CONFIRMED", "HARVESTED"].includes(o.status))
+                    const activeMirrorOrders = orderMirror.filter((o: any) => ["PENDING", "CONFIRMED", "HARVESTED"].includes(o.status))
 
                     // [V0930 FIX]：檢查是否在「所有」雲端訂單中都找不到 (不分狀態)，避免把已收割的當成缺失
-                    const missingInCloud = pendingInMirror.filter(
+                    const missingInCloud = activeMirrorOrders.filter(
                         mo => !cloudOrders.some((co: any) => co.order_id === mo.order_id)
                     )
 
@@ -187,7 +188,7 @@ export function LivePage() {
                         }
                     } else {
                         // 雲端資料健全，同步回本地鏡像以備不時之需
-                        setOrderMirror(pendingInCloud)
+                        setOrderMirror(activeOrdersInCloud)
                         lastHealedCountRef.current = 0
                     }
 

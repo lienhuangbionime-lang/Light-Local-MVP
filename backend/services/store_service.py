@@ -90,25 +90,25 @@ def _fuzzy_find_store(clean_name: str) -> Optional[dict]:
     best_match = None
     best_score = 0.0
     
-    # 3. 使用 difflib 進行序列比對 (處理如 旗 vs 嵐 等錯字)
+    # 3. 關鍵字加權比對 (處理 substring)
     for name, sid in _STORE_BY_NAME.items():
         s_name_core = re.sub(r'[門市分店店]', '', name)
         
-        # 使用 SequenceMatcher 計算相似度 (0.0 到 1.0)
+        # 👑 完美包含權重 (如果 AI 抓到的「港富」就在「港富門市」裡，直接 100% 命中)
+        if core_name and core_name in s_name_core:
+            return {**_STORE_BY_ID[sid], "id": sid}
+            
+        # 4. 使用 difflib 進行序列比對 (處理如 旗 vs 嵐 等錯字)
         score = difflib.SequenceMatcher(None, core_name, s_name_core).ratio()
         
-        # 如果包含關係非常明顯，給予額外加分
-        if s_name_core in core_name or core_name in s_name_core:
-            score = max(score, 0.75)
-            
         if score > best_score:
             best_score = score
             best_match = {**_STORE_BY_ID[sid], "id": sid}
     
-    if best_score < 0.7:
+    if best_score < 0.6: # 稍微調降門檻，因為我們已經有了 Substring 必中邏輯
         print(f"[STORE] Fuzzy match failed for '{core_name}' (Best score: {best_score:.2f})")
     
-    return best_match if best_score >= 0.7 else None
+    return best_match if best_score >= 0.6 else None
 
 
 # ─────────────────────────────────────────
@@ -150,7 +150,7 @@ async def resolve_store_info(raw_info: str, numeric_inventory: Optional[str] = N
     if raw_info:
         # 清理字樣 (移除 7-11, 門市, 括號等)
         clean_name = raw_info
-        for noise in ["7-ELEVEN", "7-11", "門市", "店", "(", ")", "（", "）"]:
+        for noise in ["7-ELEVEN", "7-11", "711", "門市", "店", "(", ")", "（", "）", " ", "　"]:
             clean_name = clean_name.replace(noise, "")
         clean_name = re.sub(r'[^\w\u4e00-\u9fa5]', '', clean_name).strip()
         
@@ -158,10 +158,14 @@ async def resolve_store_info(raw_info: str, numeric_inventory: Optional[str] = N
             matched = _fuzzy_find_store(clean_name)
             if matched:
                 result = f"{matched['id']} {matched['name']}"
-                print(f"[STORE] Matched by Name: {clean_name} -> {result}")
+                msg = f"[STORE] Match: '{clean_name}' -> {result}"
+                print(msg)
+                config.LAST_EVENTS.insert(0, {"time": "store", "content": msg})
                 return result
     
-    print(f"[STORE] No match, returning raw: '{raw_info}'")
+    msg = f"[STORE] No match for: '{raw_info}'"
+    print(msg)
+    config.LAST_EVENTS.insert(0, {"time": "store_fail", "content": msg})
     return raw_info if raw_info else ""
 
 

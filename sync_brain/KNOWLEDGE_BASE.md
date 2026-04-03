@@ -34,4 +34,36 @@
 - **圖片解析**: 若買家傳送截圖，請回覆：「AI 主管已收到您的圖片，正在進行解析，請稍候片刻。」
 
 ---
-**資料更新日期**: 2026-03-18
+
+# 🛡️ Antigravity Technical Knowledge Base (Experience Artifact)
+
+Experience patterns, stability logs, and pre-execution checklists for the **LifeOS v7.1** core.
+
+## ⚠️ Known Error Patterns & Resolution
+
+| Category | Issue Pattern | Resolution (Fix) |
+| :--- | :--- | :--- |
+| **Bridge Latency** | Chat unresponsive or 20s forced delay on first message. | **FIX**: Initialize `lastRun` to `Date.now() - minInterval` in `bridge-worker.js`. |
+| **Rate Limit** | UI shows "API rate limit reached". `bridge.js` error 429. | **FIX**: Implement dynamic backoff (e.g. 2s minimum) and monitor `stderr` for 429 strings. |
+| **Dependency Drift** | `ModuleNotFoundError` despite local install (e.g. `duckduckgo_search`). | **FIX**: Always verify `requirements.txt` or `package.json` parity before committing tool changes. |
+| **Bootstrap 404** | AI model factory fails with 404 (version mismatch). | **FIX**: Standardize on `get_model()` factory to detect available Gemini models dynamically. |
+
+## 🏗️ v7.1 Core Protocols (Mandates)
+
+### 1. Unified Command Queue (📥)
+- **Path**: `.gemini/antigravity/COMMAND_QUEUE/*.json`
+- **Logic**: Primary task bus. Avoid executing direct out-of-band commands unless they are small experiments.
+
+### 2. Context Sync First (⚡)
+- **Rule**: Read `sync_brain/cortex_state.md` and `SYSTEM_CONTEXT.md` at session start.
+- **Goal**: Prevent architectural hallucination and ensure knowledge continuity.
+
+## ✅ Pre-Execution Checklist (v7.1 Mandate)
+
+1. [ ] **Target Verification**: Use `grep_search` or `view_file` to confirm the exact target line/logic before any rewrite.
+2. [ ] **Rate Limit Probe**: Check if any active 429 backoff is in effect in the bridge process.
+3. [ ] **Cwd Security**: Ensure `Cwd` in `run_command` is within the workspace allowlist (usually `.gemini`).
+4. [ ] **Self-Validation**: Run a syntax check (`python -m py_compile`) or unit test immediately after modification.
+
+---
+**Technical Knowledge Updated**: 2026-04-03 | **Status**: v7.1 Aligned

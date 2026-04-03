@@ -42,13 +42,13 @@ async def test_vision():
         
         if result:
             raw_shipping = result.get("shipping_info", "")
-            inventory = result.get("numeric_inventory", "")
+            reasoning = result.get("reasoning", "")
             # 💡 模擬後端的真實流程：呼叫 resolve_store_info 進行查表校正 (傳入救援清單)
-            actual_shipping = await resolve_store_info(raw_shipping, inventory)
+            actual_shipping = await resolve_store_info(raw_shipping, reasoning)
             
             print(f"Buyer Name: {result.get('buyer_name')}")
             print(f"Phone: {result.get('phone')}")
-            print(f"AI Inventory: {result.get('numeric_inventory')}")
+            print(f"AI Reasoning: {result.get('reasoning')}")
             print(f"Raw AI Extract: {raw_shipping}")
             print(f"Final Resolved: {actual_shipping}")
         else:
