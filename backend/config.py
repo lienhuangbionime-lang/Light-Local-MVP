@@ -11,7 +11,7 @@ ADMIN_SECRET = os.getenv("ADMIN_SECRET", "".join(random.choices("0123456789abcde
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN", "")
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-2-preview"
-GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "models/gemma-4-26b-it")
+GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "models/gemma-3-27b-it")
 
 # [SYSTEM] Identifiers
 INSTANCE_ID = "".join(random.choices("0123456789abcdef", k=8))
