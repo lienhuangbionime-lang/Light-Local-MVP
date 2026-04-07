@@ -248,7 +248,7 @@ def chat_with_brain(message, history, active_skill_content=""):
     for _ in range(MAX_ITERATIONS):
         try:
             response = client.models.generate_content(
-                model=os.getenv("GEMINI_VISION_MODEL", "models/gemma-4-26b-it"),
+                model=os.getenv("GEMINI_VISION_MODEL", "models/gemma-4-31b-it"),
                 contents=contents
             )
             raw_text = response.text or ""

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
             "Extract the line items from this receipt or invoice. Return ONLY a valid JSON array where each object has 'name' (string, the product name), 'foreignPrice' (number, the unit cost found), and 'quantity' (number). Do not include any markdown formatting, just the raw JSON."
 
         // 使用環境變數中的模型，預設採用 gemma-4-26b-it
-        const modelName = process.env.GEMINI_VISION_MODEL || "models/gemma-4-26b-it"
+        const modelName = process.env.GEMINI_VISION_MODEL || "models/gemma-4-31b-it"
         const cleanModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`
         const url = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${apiKey}`
         const response = await fetch(url, {
