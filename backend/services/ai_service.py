@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any, List
 from backend.config import ACTIVE_PRODUCTS, global_client
 import backend.config as config
 
+# Delete duplicate helper added in previous step
+
 async def get_gemini_embedding(text: str) -> Optional[List[float]]:
     """呼叫 Google AI Studio API 取得文字向量 (Embedding)
     使用最新的 gemini-embedding-2-preview 模型，並強制 768 維度以相容 Firestore
@@ -63,7 +65,7 @@ async def transcribe_image_text(image_data_base64: str, mime_type: str = "image/
     
     parts = [
         {"text": ocr_prompt},
-        {"inlineData": {"mimeType": mime_type, "data": image_data_base64}}
+        {"inline_data": {"mime_type": mime_type, "data": image_data_base64}}
     ]
     
     pure_model = config.GEMINI_VISION_MODEL.replace("models/", "")
@@ -129,41 +131,59 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
             except: pass
     return None
 
+def clean_json_output(text: str) -> str:
+    """
+    Strips role-echoing preamble, markdown blocks, and trailing noise from AI output.
+    Attempts to extract the first valid {...} or [...] block.
+    """
+    if not text:
+        return ""
+    
+    # 1. Look for JSON blocks specifically
+    # Use non-greedy match for the content between braces or brackets
+    match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    if match:
+        return match.group(0)
+    
+    # 2. Fallback: manual cleanup of common markers
+    cleaned = text.replace("```json", "").replace("```", "").strip()
+    return cleaned
+
 async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[str] = None, mime_type: str = "image/jpeg", system_prompt: Optional[str] = None, history: Optional[str] = None) -> Optional[Dict]:
-    """使用 Gemma 3 27B IT 進行深度解析 (主管角色 - 支援圖片辨識)"""
-    catalog_str = "\n".join([f"- {code}: {name}" for code, name in ACTIVE_PRODUCTS.items()])
-    history_context = f"\n\n【該買家近期訂單歷史】：\n{history}" if history else ""
+    """使用 Gemma 4 31B IT 進行深度解析 (主管角色 - 支援圖片與手寫辨識)"""
     
     default_prompt = f"""
-你是一位專業的「FB直播 AI 秘書」。請從截圖或文字中提取訂單資訊。
-請【嚴格回傳 JSON】，不要包含任何描述文字或 Markdown。
+你是一位專業的「EchoOrder 結帳小幫手」，負責從買家的對話截圖、地址貼紙、或越南文手寫單據中提取訂購資訊。
+請根據圖片內容，回傳【嚴格格式】的 JSON 資料。
 
-【商品目錄】：
-{catalog_str}
-{history_context}
+【重要任務】：
+1. 識別買家姓名 `buyer_name` 與電話 `phone`。
+2. 識別相關店號或門市名稱 `store_candidates` (6位數字店號、店名、或關鍵地址)。
+3. 識別訂購項目 `items` (包含 product_code 與 quantity)。
+
+【語言與辨識規則】：
+- **支援多語系**：圖片可能包含繁體中文或越南文 (Vietnamese)。
+- **支援手寫辨識**：請特別留意手寫的數量與產品名稱。
+- **店號優先**：如果看到 6 位數字（店號），優先放入 `store_candidates`。
 
 【JSON 格式要求】：
+回傳必須僅包含 JSON 內容，禁止任何 Role/Task 說明、禁止前導文字。
+格式範本：
 {{
-  "reasoning": "簡述提取過程",
-  "buyer_name": "姓名 (20字內)",
-  "phone": "10碼手機",
-  "shipping_info": "買家提供的完整地址或門市文字（原文照抄，不要截斷）",
-  "store_candidates": ["完整6位數店號（如229207）", "門市名稱（如隆陞）", "完整地址（如有）"],
+  "buyer_name": "姓名",
+  "phone": "電話",
+  "store_candidates": ["店名或6位店號"],
   "items": [{{ "product_code": "代號", "quantity": 數量 }}],
-  "is_duplicate": false
+  "shipping_info": "對話頁面或貼紙上的完整地址（原文照抄）"
 }}
 
-【7-11 門市提取規則 (嚴格遵守)】：
-- [store_candidates 優先搜尋順序]：
-  a. 7-11【電子發票】圖：條碼正下方左側有一個 6 位數字，那就是【門市店號】，優先提取這個！
-  b. 圖中是否有清晰的 6 位數字（排除年份和8位以上發票號）？有則放入。
-  c. 圖中是否有 7-11 門市名稱（漢字2-4字）？有則放入。
-  d. 圖中是否有完整地址文字？有則完整照抄放入。
-- [嚴禁] 把不同位置的數字拼接（例如路段「324」和門牌「173」不可拼成「324173」）。
-- [嚴禁] 把發票號（8位以上，含字母，如 B0-9819498、AU-...）放入 store_candidates。
-- [嚴禁] 把年份（113、2024等）放入 store_candidates。
-- [shipping_info]：照抄買家原始門市/地址文字，不要縮減。
-- [姓名]：優先抓取對話頂部名稱。
+【當前商品代號表 (參考用)】：
+{json.dumps(ACTIVE_PRODUCTS, ensure_ascii=False)}
+
+【負面約束 (絕對禁止)】：
+- 絕對不要複讀你的 Role 或 Task。
+- 不要回傳 Markdown 代碼塊（不要 ```json）。
+- 不要添加任何解釋，直接從 `{{` 開始輸出。
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     
@@ -175,8 +195,8 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
     parts = [{"text": final_system_prompt + f"\n\n待解析內容：\n{text_content}"}]
     if image_data_base64:
         parts.append({
-            "inlineData": {
-                "mimeType": mime_type,
+            "inline_data": {
+                "mime_type": mime_type,
                 "data": image_data_base64
             }
         })
@@ -184,7 +204,7 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
     contents = [{"parts": parts}]
     
     try:
-        # 使用通用函式呼叫 API (去掉 models/ 前綴以相容 call_ai_studio)
+        # 使用通用函式呼叫 API
         pure_model_name = model_name.replace("models/", "")
         text_out = await call_ai_studio(pure_model_name, contents)
         
@@ -192,16 +212,19 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
             # [DEBUG] 記錄 AI 原文以便調優
             config.LAST_EVENTS.insert(0, {"time": "ai_raw", "content": f"AI({pure_model_name}) 原文: {text_out[:300]}"})
             
-            json_match = re.search(r'\{.*\}', text_out, re.DOTALL)
-            if json_match:
-                try:
-                    result = json.loads(json_match.group(0))
-                    if "buyer_name" in result and result["buyer_name"]:
-                        result["buyer_name"] = str(result["buyer_name"])[:20]
-                    return result
-                except: pass
+            # 使用穩健的清潔邏輯
+            cleaned_json = clean_json_output(text_out)
             
-            # Fallback: 手動提取關鍵欄位
+            try:
+                result = json.loads(cleaned_json)
+                # 姓名長度限制
+                if "buyer_name" in result and result["buyer_name"]:
+                    result["buyer_name"] = str(result["buyer_name"])[:20]
+                return result
+            except Exception as parse_e:
+                print(f"[AI] JSON 解析失敗: {parse_e}. 清理後內容: {cleaned_json[:100]}")
+            
+            # Fallback: 正則提取關鍵欄位 (防止 JSON 完全毀損但欄位清晰)
             extracted = {}
             name_m = re.search(r'"buyer_name":\s*"([^"]*)"', text_out)
             phone_m = re.search(r'"phone":\s*"([^"]*)"', text_out)
@@ -214,9 +237,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
             if extracted.get("phone") or extracted.get("shipping_info"):
                 return extracted
 
-            print(f"[AI] 解析失敗。原始輸出: {text_out[:200]}")
+            print(f"[AI] 解析完全失敗。原始輸出: {text_out[:200]}")
             from backend.database.firebase import save_events
-            config.LAST_EVENTS.insert(0, {"time": "debug", "content": f"解析失敗: {text_out[:200]}"})
+            config.LAST_EVENTS.insert(0, {"time": "debug", "content": f"解析完全失敗: {text_out[:200]}"})
             await save_events()
             
     except Exception as e:

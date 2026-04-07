@@ -26,36 +26,27 @@ export async function POST(req: NextRequest) {
 
 
         const prompt =
-            "Extract the line items from this receipt or invoice. Return ONLY a valid JSON array where each object has 'name' (string, the product name), 'foreignPrice' (number, the unit cost found), and 'quantity' (number). Do not include any markdown formatting, just the raw JSON."
+            "Extract the line items from this receipt or invoice. Return ONLY a valid JSON array where each object has 'name' (string, the product name), 'foreignPrice' (number, the unit cost found), and 'quantity' (number). \n\nIMPORTANT: Start your response directly with '[' and end with ']'. Do not include any markdown formatting, preamble, role summary, or explanation."
 
-        // 使用環境變數中的模型，預設採用 gemma-4-26b-it
+        // 使用環境變數中的模型，預設採用 gemma-4-31b-it
         const modelName = process.env.GEMINI_VISION_MODEL || "models/gemma-4-31b-it"
         const cleanModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`
         const url = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${apiKey}`
+        
         const response = await fetch(url, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                contents: [
-                    {
-                        parts: [
-                            { text: prompt },
-                            {
-                                inlineData: {
-                                    mimeType,
-                                    data: cleanedBase64,
-                                },
-                            },
-                        ],
-                    },
-                ],
-            }),
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inline_data: { mime_type: mimeType, data: cleanedBase64 } }
+                    ]
+                }]
+            })
         })
 
         const rawText = await response.text()
-
         if (!response.ok) {
             console.error("Gemini API Error status:", response.status)
             console.error("Gemini API Error body:", rawText)
@@ -100,10 +91,11 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-            // 有些情況仍會包在 ```json 區塊裡
-            const cleanedJson = textResponse
-                .replace(/^```json\s*|\s*```$/g, "")
-                .trim()
+            // --- ROBUST EXTRACTION ---
+            // Use regex to find the array block [ ... ] in case of preamble/echoing
+            const jsonMatch = textResponse.match(/\[\s*\{[\s\S]*\}\s*\]/)
+            const cleanedJson = jsonMatch ? jsonMatch[0] : textResponse.replace(/^```json\s*|\s*```$/g, "").trim()
+            
             const parsedItems = JSON.parse(cleanedJson)
             return NextResponse.json({ items: parsedItems })
         } catch (parseError) {

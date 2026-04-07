@@ -59,7 +59,10 @@
 2. **IPv6 localhost 修正**: Next.js 請求或後端呼叫必須使用 `127.0.0.1` 取代 `localhost`，避免連線掛掉。
 3. **CORS 安全規格**: 雲端環境 `allow_origins=["*"]` 需配合 `allow_credentials=False`。
 4. **端點一致性**: 獲取資料類端點 (如：`/stats`) 統一使用 **GET**，與前端 Fetch 對齊。
-8. **7-11 辨識協同 (Synergy)**: 採用「AI 發現 + Python 驗證」模式。優先匹配圖片中的「精準店名」（如：圓興），次級匹配 6 位數店號。所有店號必須通過 `stores_cloud.json` 實體資料庫驗證，不准跳過後端校對直接存入。
+8. **7-11 辨識與驗證 (Autonomous Recognition)**: 採用「OCR 轉錄 + Python Regex 萃取」的雙階模式。
+   - **Step 1 (Vision)**: Gemini 僅負責純文字轉錄 (OCR)，不進行解釋，避免「旗山/嵐山」類幻覺。
+   - **Step 2 (Regex)**: Python 負責從轉錄文字中尋找「精確 6 位數」店號及「店名交叉比對」，此為確定性邏輯。
+   - **Step 3 (Filter)**: 自動剔除 7-ELEVEN 品牌名與非 6 位數純數字，所有店號必須通過本地 7278 筆 `stores_cloud.json` 驗證。
 
 ---
-**Last Updated**: 2026-04-03 | **Status**: OpenClaw Launcher Integration Complete
+**Last Updated**: 2026-04-04 | **Status**: 7-11 Recognition Synergy v2 Complete

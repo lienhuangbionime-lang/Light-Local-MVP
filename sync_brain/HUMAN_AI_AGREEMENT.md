@@ -86,3 +86,19 @@ graph TD
 
 ---
 **Last Updated**: 2026-04-04 | **Session**: Store Recognition Synergy Fix
+
+
+me/accounts?fields=access_token,name
+
+{
+  "data": [
+    {
+      "access_token": "EAA....(這是一串超級長的永久權杖碼)....",
+      "name": "MuMu shop",
+      "id": "900699483135455",
+      "tasks": [ ... ]
+    },
+    ... 可能還有其他粉專 ...
+  ],
+  "paging": { ... }
+}

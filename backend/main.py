@@ -396,8 +396,8 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
 【規則 (最高優先級)】：
 1. **多重探測 (Candidates)**：在 `store_candidates` 中列出所有你在圖中看到的「店名」或「6位數字」。
 2. **數字排除**：
-   - 看到「113年」、「114年」等年度資訊：**禁止放入 candidates**。
-   - 看到「NM-16942488」等電子發票號碼：**禁止放入 candidates**。
+   - 看到年份數字 (如 113, 2024, 2025)：**禁止放入 candidates**。
+   - 看到發票號碼 (含英文或 8 位以上純數字)：**禁止放入 candidates**。
 3. **店名提取**：請提取如「旗山旗力」、「港富」等獨特名字。
 4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
 
@@ -410,51 +410,59 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         
         extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
         
-        if extracted and isinstance(extracted, dict):
-            # 1. 清理電話
-            if "phone" in extracted and extracted["phone"]:
-                extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
-            
-            # 2. [NEW] OCR Two-Step: 先用轉錄文字做 Regex 確定性萃取
-            from backend.services.ai_service import transcribe_image_text
-            from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
-            from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
-            
-            ocr_text = await transcribe_image_text(image_b64)
-            ocr_candidates = []
-            if ocr_text:
-                # Regex 找 6 位數店號 (確定性，不會幻覺)
-                ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
-                # 再用店名字典交叉比對 OCR 文字
-                name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
-                ocr_candidates = name_matched_ids + ocr_candidates  # 店名比對優先
-            
-            # 3. 合併：OCR 萃取優先，AI store_candidates 作備援
-            ai_candidates = extracted.get("store_candidates", [])
-            if extracted.get("shipping_info"): ai_candidates.append(extracted["shipping_info"])
-            all_candidates = ocr_candidates + ai_candidates  # OCR 在前，AI 在後
-            
-            verified_store = await resolve_store_info("", candidates=all_candidates)
-            extracted["shipping_info"] = verified_store
-            
-            # 3. [PRIME] 瞬間存入 Firebase (PENDING 狀態)
-            # 這能解決使用者「看不見未填單資料」的問題，因為 AI 填完就立刻同步雲端。
-            if order_id in config.ORDER_POOL:
-                 order = config.ORDER_POOL[order_id]
-                 order.buyer_name = extracted.get("buyer_name")
-                 order.phone = extracted.get("phone")
-                 order.shipping_info = extracted.get("shipping_info")
+        # 1. Initialize result structure if AI failed to return JSON
+        if not extracted or not isinstance(extracted, dict):
+            print(f"[AI_FILL] AI Secretary failed to return JSON, using Empty/OCR Fallback.")
+            extracted = {"buyer_name": "", "phone": "", "store_candidates": [], "items": []}
+        
+        # 2. Clean phone
+        if extracted.get("phone"):
+            extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
+        
+        # 3. [ROBUST] OCR Two-Step fallback: Runs even if AI JSON failed
+        from backend.services.ai_service import transcribe_image_text
+        from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
+        from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
+        
+        ocr_text = await transcribe_image_text(image_b64)
+        ocr_candidates = []
+        if ocr_text:
+            ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
+            name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
+            ocr_candidates = name_matched_ids + ocr_candidates
+        
+        # 4. Merge results
+        ai_candidates = extracted.get("store_candidates", [])
+        if extracted.get("shipping_info"): ai_candidates.append(extracted["shipping_info"])
+        all_candidates = ocr_candidates + ai_candidates
+        
+        verified_store = await resolve_store_info("", candidates=all_candidates)
+        extracted["shipping_info"] = verified_store
+        
+        # 5. Persist to Firebase
+        if order_id in config.ORDER_POOL:
+             order = config.ORDER_POOL[order_id]
+             has_update = False
+             if extracted.get("buyer_name") and not order.buyer_name:
+                 order.buyer_name = extracted["buyer_name"]; has_update = True
+             if extracted.get("phone") and not order.phone:
+                 order.phone = extracted["phone"]; has_update = True
+             if extracted.get("shipping_info") and not order.shipping_info:
+                 order.shipping_info = extracted["shipping_info"]; has_update = True
+             
+             if has_update:
                  order.status = "PENDING"
                  from backend.database.firebase import save_orders
                  await save_orders(order_id=order_id)
-                 print(f"[AI_FILL] Order {order_id} instantly persisted as PENDING.")
 
-            print(f"[AI_FILL] Final Parsed Result: {extracted}")
+        # Return success if we have at least one valid field
+        if any([extracted.get("buyer_name"), extracted.get("phone"), extracted.get("shipping_info")]):
+            print(f"[AI_FILL] Final Result: {extracted}")
             from backend.database.firebase import save_events
             await save_events()
             return {"status": "success", "data": extracted}
         
-        print(f"[AI_FILL] 解析失敗或格式錯誤: {extracted}")
+        print(f"[AI_FILL] All recognition methods failed for image.")
         return {"status": "error", "message": "AI 無法從此圖片辨識到有效的姓名、電話或門市。"}
     except Exception as e:
         print(f"[AI_FILL] 處理崩潰: {e}")
