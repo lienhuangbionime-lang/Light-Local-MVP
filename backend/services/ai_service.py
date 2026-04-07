@@ -119,7 +119,7 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
 }}
 """
     contents = [{"parts": [{"text": system_prompt + f"\n\n買家留言：\n{text_content}"}]}]
-    text_out = await call_ai_studio("gemma-3-27b-it", contents) # 預設使用 Gemma 3 IT
+    text_out = await call_ai_studio(config.GEMINI_VISION_MODEL, contents) # 使用全域設定之模型
     
     if text_out:
         json_match = re.search(r'\{.*\}', text_out, re.DOTALL)
