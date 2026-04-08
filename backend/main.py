@@ -513,12 +513,17 @@ async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "check
         print(f"[AI_FILL] Order {order_id} ({task_type}) processed successfully.")
 
     except Exception as e:
-        print(f"[AI_FILL] Background task failed: {e}")
+        import traceback
+        error_msg = f"Background task failed: {str(e)}\n{traceback.format_exc()}"
+        print(f"[AI_FILL] {error_msg}")
+        
         if order_id in config.ORDER_POOL:
             config.ORDER_POOL[order_id].ai_status = "failed"
             config.ORDER_POOL[order_id].ai_error = str(e)
             from backend.database.firebase import save_orders
             await save_orders(order_id=order_id, fields=["ai_status", "ai_error"])
+        
+        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] CRASH: {str(e)[:100]}"})
 
 @app.post("/api/digitize/ocr")
 async def start_digitize_ocr(data: Dict, background_tasks: BackgroundTasks):

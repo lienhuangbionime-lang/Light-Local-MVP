@@ -74,7 +74,7 @@ export function DigitizePage() {
 
       // 3. Poll for result
       let attempts = 0
-      const maxAttempts = 30 // 60 seconds total
+      const maxAttempts = 60 // 120 seconds total (2s * 60) to account for cloud latency
       
       const poll = async (): Promise<any> => {
         if (attempts >= maxAttempts) throw new Error("辨識逾時，請重試")
