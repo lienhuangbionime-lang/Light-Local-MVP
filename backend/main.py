@@ -449,48 +449,25 @@ async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "check
         # --- Prompt Selection ---
         if task_type == "digitize":
             # [DIGITIZE PROMPT] Focus on product items
-            prompt = """你現在是【Role: EchoOrder Digitize Specialist】。
-你的任務是從這張「發票 (Invoice)」或「收據 (Receipt)」截圖中，精確提取商品清單。
+            prompt = """You are the EchoOrder Digitize Specialist.
+Task: Extract item list from an invoice/receipt screenshot.
+Output Format: Strict JSON `{"items": [{"name": "...", "foreignPrice": ..., "quantity": ...}, ...]}`.
 
-請【嚴格】回傳以下 JSON 格式。
-
-【規則】：
-1. **品項提取 (items)**：識別每一個商品，包含：
-   - `name`: 商品名稱 (原文，盡量包含特徵如顏色/尺寸)
-   - `foreignPrice`: 外幣單價 (純數字)
-   - `quantity`: 數量 (純數字)
-2. **越南文支援**：如果收據是越南文，請翻譯成中文或保持原文。
-
-【JSON 格式要求】：
-直接回傳 JSON，禁止任何前導說明：
-{
-  "items": [
-    { "name": "商品1", "foreignPrice": 100, "quantity": 1 },
-    ...
-  ]
-}"""
+Rules:
+1. `name`: Item name (original or translated from Vietnamese).
+2. `foreignPrice`: Unit price as numbers only.
+3. `quantity`: Quantity as numbers only.
+4. Language: Supports Traditional Chinese and Vietnamese."""
         else:
             # [CHECKOUT PROMPT] Focus on buyer contact info
-            prompt = f"""你現在是【Role: EchoOrder Checkout Helper】。
-你的任務是從買家提供的「截圖」中，精確提取收件資訊。
+            prompt = """You are the EchoOrder Checkout Helper.
+Task: Extract contact info from a conversation screenshot or address sticker.
+Output Format: Strict JSON `{"buyer_name": "...", "phone": "...", "store_candidates": ["..."], "shipping_info": "..."}`.
 
-請【嚴格】回傳以下 JSON 格式。
-
-【規則 (最高優先級)】：
-1. **多重探測 (Candidates)**：在 `store_candidates` 中列出所有你在圖中看到的「店名」或「6位數字」。
-2. **數字排除**：
-   - 看到年份數字 (如 113, 2024, 2025)：**禁止放入 candidates**。
-   - 看到發票號碼 (含英文或 8 位以上純數字)：**禁止放入 candidates**。
-3. **店名提取**：請提取如「旗山旗力」、「港富」等獨特名字。
-4. **買家姓名**：優先抓取對話視窗最頂部顯示的對对象名稱。
-
-【JSON 格式要求】：
-直接回傳 JSON，禁止任何前導說明：
-{{
-  "buyer_name": "買家姓名",
-  "phone": "10 碼電話",
-  "store_candidates": ["店號1", "店名1", "店號2"...]
-}}"""
+Rules:
+1. `store_candidates`: List any store names (e.g., 旗山旗力, 港富) or 6-digit store codes you see. 
+2. `buyer_name`: Target person's name.
+3. Language: Supports Traditional Chinese and Vietnamese."""
         
         config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 2: Sending to Gemini (Model: {config.GEMINI_VISION_MODEL})"})
         from backend.services.ai_service import ask_gemini_secretary, transcribe_image_text
@@ -601,7 +578,7 @@ async def ai_fill_order(order_id: str, data: Dict, background_tasks: BackgroundT
             return {"status": "processing", "message": "Already processing"}
         
         order.ai_status = "processing"
-        background_tasks.add_task(do_ai_fill_task, order_id, image_b64)
+        background_tasks.add_task(do_ai_fill_task, order_id, image_b64, task_type="checkout")
         return {"status": "processing", "message": "Job started in background"}
 
     return {"status": "error", "message": "Order not found"}

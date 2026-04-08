@@ -36,15 +36,21 @@ async def get_gemini_embedding(text: str) -> Optional[List[float]]:
         print(f"[AI] Embedding 呼叫異常: {e}")
     return None
 
-async def call_ai_studio(model_name: str, contents: List[Dict]) -> Optional[str]:
-    """通用 Google AI Studio API 呼叫函式"""
+async def call_ai_studio(model_name: str, contents: List[Dict], system_instruction: Optional[str] = None) -> Optional[str]:
+    """通用 Google AI Studio API 呼叫函式
+    [system_instruction support]: 支援獨立的系統指令塊以提升模型穩定性
+    """
     if not config.GEMINI_API_KEY:
         return None
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={config.GEMINI_API_KEY}"
     
+    payload = {"contents": contents}
+    if system_instruction:
+        payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
+    
     try:
-        res = await global_client.post(url, json={"contents": contents}, timeout=60.0)
+        res = await global_client.post(url, json=payload, timeout=60.0)
         if res.status_code == 200:
             raw_res = res.json()
             return raw_res.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
@@ -148,30 +154,34 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
 def clean_json_output(text: str) -> str:
     """
     Strips role-echoing preamble, markdown blocks, and trailing noise from AI output.
-    Attempts to extract the largest balanced {...} and [...] blocks.
+    [NEW] Handles mirrored prompt blocks by searching for the FIRST valid JSON structure.
     """
     if not text:
         return ""
     
-    # [NEW] Robust fallback: Search for any JSON-like structure
-    # 1. Try to find an array block first (common for Digitize)
+    # [NEW] Remove known prompt snippets if they appear at the start (mirroring fix)
+    snippets = ["Role:", "Task:", "Output Format:", "EchoOrder"]
+    for s in snippets:
+        if text.strip().startswith(s) or ("* " + s) in text[:200]:
+            # If we see these, it's likely mirroring. We MUST find the JSON block.
+            break
+
+    # 1. Try to find an array block (common for Digitize)
     array_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', text)
     if array_match:
         return array_match.group(0)
 
     # 2. Search for any JSON-like structure (braces)
-    json_blocks = re.findall(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    json_blocks = re.findall(r'\{[\s\S]*\}', text)
     if json_blocks:
-        # Sort by length and take the longest one (most likely to be the full data)
+        # Sort by length and take the longest one
         json_blocks.sort(key=len, reverse=True)
         cleaned = json_blocks[0]
-        # Final cleanup of markdown clutter inside
+        # Final cleanup of markdown clutter
         cleaned = cleaned.replace("```json", "").replace("```", "").strip()
         return cleaned
 
-    # Fallback: manual cleanup of common markers
-    cleaned = text.replace("```json", "").replace("```", "").strip()
-    return cleaned
+    return text.strip()
 
 async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[str] = None, mime_type: str = "image/jpeg", system_prompt: Optional[str] = None, history: Optional[str] = None) -> Optional[Dict]:
     """使用 Gemma 4 31B IT 進行深度解析 (主管角色 - 支援圖片與手寫辨識)"""
@@ -220,7 +230,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
         return None
     
     model_name = config.GEMINI_VISION_MODEL
-    parts = [{"text": final_system_prompt + f"\n\n待解析內容：\n{text_content}"}]
+    # [system_instruction] Pass the main prompt as a clean system instruction
+    # The content only contains the trigger command and the media
+    parts = [{"text": f"請依照系統指示處理此內容。\n待解析內容：\n{text_content}"}]
     if image_data_base64:
         parts.append({
             "inline_data": {
@@ -232,9 +244,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
     contents = [{"parts": parts}]
     
     try:
-        # 使用通用函式呼叫 API
+        # 使用通用函式呼叫 API，傳入獨立的 system_instruction
         pure_model_name = model_name.replace("models/", "")
-        text_out = await call_ai_studio(pure_model_name, contents)
+        text_out = await call_ai_studio(pure_model_name, contents, system_instruction=final_system_prompt)
         
         if text_out:
             # [DEBUG] 記錄 AI 原文以便調優
