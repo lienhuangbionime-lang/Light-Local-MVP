@@ -44,30 +44,30 @@ from backend.database.firebase import init_firebase
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """管理全域資源生命週期 (雲端加強版)"""
-    print(f"🚀 [INIT] 啟動伺服器初始化... (Instance: {INSTANCE_ID})")
+    """管理全域資源生命週期 (快速啟動版)"""
+    print(f"🚀 [INIT] 預備啟動伺服器... (Instance: {INSTANCE_ID})")
     
-    try:
-        # 1. Firebase 初始化
-        init_firebase()
-        
-        # 2. 關鍵數據載入 (改為阻塞式確保啟動前準備完成)
-        print("[INIT] 載入訂單與事件數據...")
-        await load_orders()
-        await load_events()
-        
-        # 3. 門市資料熱載入 (確保 store_service 已備妥)
-        from backend.services.store_service import _load_stores_into_memory
-        _load_stores_into_memory()
-
-        # 4. FB 訂閱 (僅在有 Token 時執行，不佔用啟動時間)
-        if config.PAGE_ACCESS_TOKEN:
-            asyncio.create_task(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN))
+    # 1. 核心初始化 (極速)
+    init_firebase()
+    
+    async def fast_startup_task():
+        """背景加載耗時資源，不阻塞健康檢查"""
+        try:
+            print("[INIT] 背景載入數據中...")
+            await load_orders()
+            await load_events()
             
-        print("✅ [INIT] 伺服器初始化成功")
-    except Exception as e:
-        print(f"❌ [INIT] 初始化崩潰: {e}")
-        # 在雲端環境，初始化失敗通常代表程式無法運作，預留報錯
+            from backend.services.store_service import _load_stores_into_memory
+            _load_stores_into_memory()
+
+            if config.PAGE_ACCESS_TOKEN:
+                await subscribe_page_to_app(config.PAGE_ACCESS_TOKEN)
+            print("✅ [INIT] 背景載入完成")
+        except Exception as e:
+            print(f"❌ [INIT] 背景載入失敗: {e}")
+
+    # 啟動背景任務，讓 lifespan 提早 yield (進入 Ready 狀態)
+    asyncio.create_task(fast_startup_task())
     
     yield
     
