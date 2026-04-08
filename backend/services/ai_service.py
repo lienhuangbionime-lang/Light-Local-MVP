@@ -154,8 +154,12 @@ def clean_json_output(text: str) -> str:
         return ""
     
     # [NEW] Robust fallback: Search for any JSON-like structure
-    # This regex looks for anything that starts with { and ends with } (greedy)
-    # or starts with [ and ends with ] (greedy)
+    # 1. Try to find an array block first (common for Digitize)
+    array_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', text)
+    if array_match:
+        return array_match.group(0)
+
+    # 2. Search for any JSON-like structure (braces)
     json_blocks = re.findall(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
     if json_blocks:
         # Sort by length and take the longest one (most likely to be the full data)

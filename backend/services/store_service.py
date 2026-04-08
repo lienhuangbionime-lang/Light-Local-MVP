@@ -66,58 +66,57 @@ def _load_stores_into_memory():
         print(msg)
         config.LAST_EVENTS.insert(0, {"time": "error", "content": msg})
 
-# _load_stores_into_memory()
+def _normalize_store_name(name: str) -> str:
+    """極致標準化：處理簡繁、錯別字、全半形"""
+    # 1. 移除所有非字元 (含空白、符號)
+    name = re.sub(r'[^\w\u4e00-\u9fa5]', '', name)
+    # 2. 移除冗餘字彙
+    name = re.sub(r'[門市分店店]', '', name)
+    # 3. [GLOBAL FIX] 處理常見錯別字或特定地區別名
+    FIXES = {
+        "旗力": "旗山旗",
+        "旗力旗山": "旗山旗",
+        "旗山旗力": "旗山旗",
+        "嵐山": "旗山"
+    }
+    for src, dst in FIXES.items():
+        if src in name:
+            name = name.replace(src, dst)
+    return name
 
-def _fuzzy_find_store(clean_name: str) -> Optional[dict]:
+def _fuzzy_find_store(raw_name: str) -> Optional[dict]:
     """從記憶體索引中模糊搜尋門市名稱，回傳最佳匹配"""
     import difflib
     
-    # 0. 基礎清理 (移除不可見字元與各類空白)
-    clean_name = re.sub(r'[^\w\u4e00-\u9fa5]', '', clean_name)
-    # 移除門市冗餘字以便比對
-    core_name = re.sub(r'[門市分店店]', '', clean_name)
+    core_name = _normalize_store_name(raw_name)
+    if not core_name: return None
     
     # 1. 核心店名匹配 (優先)
-    if core_name in _STORE_BY_NAME:
-        sid = _STORE_BY_NAME[core_name]
+    if not hasattr(_fuzzy_find_store, "_norm_index"):
+        _fuzzy_find_store._norm_index = { _normalize_store_name(n): sid for n, sid in _STORE_BY_NAME.items() }
+    
+    if core_name in _fuzzy_find_store._norm_index:
+        sid = _fuzzy_find_store._norm_index[core_name]
         return {**_STORE_BY_ID[sid], "id": sid}
     
-    # 2. 精確匹配 (原本的完整店名)
-    if clean_name in _STORE_BY_NAME:
-        sid = _STORE_BY_NAME[clean_name]
-        return {**_STORE_BY_ID[sid], "id": sid}
-    
+    # 2. 關鍵字加權比對
     best_match = None
     best_score = 0.0
     
-    # 3. 關鍵字加權比對 (處理 substring)
-    for name, sid in _STORE_BY_NAME.items():
-        s_name_core = re.sub(r'[門市分店店]', '', name)
-        
-        # 👑 完美包含權重 (如果 AI 抓到的「港富」就在「港富門市」裡，直接 100% 命中)
-        if core_name and core_name in s_name_core:
-            return {**_STORE_BY_ID[sid], "id": sid}
+    for norm_name, sid in _fuzzy_find_store._norm_index.items():
+        if len(core_name) >= 2 and (core_name in norm_name or norm_name in core_name):
+            score = 0.9 + (min(len(core_name), len(norm_name)) / max(len(core_name), len(norm_name)) * 0.1)
+            if score > best_score:
+                best_score = score
+                best_match = {**_STORE_BY_ID[sid], "id": sid}
 
-        # 👑 反向包含權重 (反向: 如果 AI 提供了長地址，而店名 "南勢" 剛好在裡面)
-        # 必須確保店名 >= 2 個字，避免單字店名盲目命中
-        if len(s_name_core) >= 2 and s_name_core in core_name:
-            return {**_STORE_BY_ID[sid], "id": sid}
-            
-        # 🏠 地址精確匹配 (如果 AI 給的是完整或部分地址，且與門市地址高度重合)
-        store_address = _STORE_BY_ID[sid].get("address", "")
-        clean_address = re.sub(r'[^\w\u4e00-\u9fa5]', '', store_address)
-        if len(core_name) >= 6 and (core_name in clean_address or clean_address in core_name):
-            return {**_STORE_BY_ID[sid], "id": sid}
-            
-        # 4. 使用 difflib 進行序列比對 (處理如 旗 vs 嵐 等錯字)
-        score = difflib.SequenceMatcher(None, core_name, s_name_core).ratio()
-        
-        if score > best_score:
-            best_score = score
-            best_match = {**_STORE_BY_ID[sid], "id": sid}
-    
-    if best_score < 0.6: # 稍微調降門檻，因為我們已經有了 Substring 必中邏輯
-        print(f"[STORE] Fuzzy match failed for '{core_name}' (Best score: {best_score:.2f})")
+    # 3. 使用 difflib (最後手段)
+    if not best_match:
+        for norm_name, sid in _fuzzy_find_store._norm_index.items():
+            score = difflib.SequenceMatcher(None, core_name, norm_name).ratio()
+            if score > best_score:
+                best_score = score
+                best_match = {**_STORE_BY_ID[sid], "id": sid}
     
     return best_match if best_score >= 0.6 else None
 

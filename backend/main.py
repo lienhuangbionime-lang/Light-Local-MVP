@@ -498,12 +498,15 @@ async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "check
             order.ai_error = None
         
         elif task_type == "digitize" and order:
-            # For digitization, we store the full extracted object (items, etc.) in a special field or just marks as done
-            # Actually, let's just mark it done and keep 'data' in return
-            order.ai_status = "done"
-            order.ai_error = None
-            # Store items in order object if needed, but usually checkout returns it via status
-            order.shipping_info = extracted  # Temporary storage for digitize result
+            # Properly extract the item list for digitization
+            if extracted.get("items") and isinstance(extracted["items"], list):
+                # We store the list of objects directly. The frontend expects this in 'data'
+                order.shipping_info = extracted # This is what get_digitize_status returns
+                order.ai_status = "done"
+                order.ai_error = None
+            else:
+                order.ai_status = "failed"
+                order.ai_error = "Could not extract item list from invoice."
             
         await save_orders(order_id=order_id)
         config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 4: resolve_store_info Result -> Success"})
