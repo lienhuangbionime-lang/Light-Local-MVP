@@ -135,6 +135,23 @@ async def resolve_store_info(raw_info: str, candidates: Optional[list] = None) -
     if raw_info and raw_info not in all_candidates:
         all_candidates.insert(0, raw_info)
     
+    # [MANUAL ALIAS] 處理特定的地名縮寫或門市別名
+    STORE_ALIASES = {
+        "旗山旗力": "280970",
+        "旗力旗山": "280970",
+        "旗力": "280970"
+    }
+    
+    # 優先檢查手動別名
+    for cand in all_candidates:
+        c_str = str(cand).strip()
+        if c_str in STORE_ALIASES:
+            sid = STORE_ALIASES[c_str]
+            if sid in _STORE_BY_ID:
+                store = _STORE_BY_ID[sid]
+                print(f"[STORE] Alias Match: {c_str} -> {sid}")
+                return f"{sid} {store['name']}"
+
     # ⬇️ 預過濾：去除品牌通用詞彙（不是門市名）
     BRAND_NOISE = {"7-ELEVEN", "7-11", "711", "7ELEVEN", "SEVEN ELEVEN"}
     all_candidates = [c for c in all_candidates if str(c).strip().upper() not in BRAND_NOISE]
