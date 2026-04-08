@@ -71,6 +71,12 @@ def init_firebase():
     except Exception as e:
         print(f"[ERROR] Firebase 初始化失敗: {e}")
 
+def clean_b64(b64_str: str) -> str:
+    """去除 data:image/xxx;base64, 前綴"""
+    if "," in b64_str:
+        return b64_str.split(",")[1]
+    return b64_str
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """管理全域資源生命週期 (快速啟動版)"""
