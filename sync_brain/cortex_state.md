@@ -1,26 +1,25 @@
 # [CORTEX STATE: CURRENT SYSTEM LOG]
-# Updated: 2026-04-04 05:06 (Taipei Time)
+# Updated: 2026-04-09 06:05 (Taipei Time)
 
-## 📍 Current Work Area: 7-11 Store Recognition Optimization
+## 📍 Current Work Area: System-Wide AI Vision Stabilization
 
-### 1. Database Status
+### 1. Recognition & Extraction Logic (Two-Step Pipeline) ✅
+- **Architecture**: Separated Transcription (OCR) from Structured Parsing across ALL modules.
+- **7-11 Store Recognition**:
+  - `ai_service.transcribe_image_text()` → Gemini raw text.
+  - `parse_service.py` → Deterministic Regex extraction (6 digits) + Store Name cross-referencing.
+  - **Success Rate**: Verified via `tmp/test_ocr_fixed.py`.
+- **Digitize Module (Item Extraction)**:
+  - `app/api/ocr/route.ts` → Refactored to 2-step pipeline for robust item list extraction.
+  - **UI Feedback**: Added specific error fragment in `digitize.tsx` for extraction failures.
+
+### 2. Database Status
 - **Store Count**: 7278 stores (Scraped from official Ibon source). ✅
-- **Latest Addition**: "鎮翊門市" and other new locations are now included.
-- **File Integrity**: `scripts/stores.json` and `scripts/stores_cloud.json` are synced and committed.
-
-### 2. Recognition Logic (Autonomous Mode)
-- **AI Vision Prompt**: Includes spatial hint (Look at bottom-left below barcode for 6-digit ID).
-- **Two-Step Pipeline**:
-  - `ai_service.transcribe_image_text()` → Gemini raw text transcription.
-  - `parse_service.py` → Deterministic Regex extraction (Exactly 6 digits).
-  - `store_service.py` → Final DB verification and Brand filtering.
-- **Success Rate**: Targeting 100% autonomous matching for clear invoice images.
+- **Sync Status**: `stores_cloud.json` synced with local.
 
 ### 3. Deployment Status
-- **Local**: Synced and functional.
-- **Cloud (Render)**: Final `stores_cloud.json` (7278 stores) and `parse_service.py` logic successfully pushed and deployed. ✅
+- **Production (Render)**: Pushing latest stabilization logic to `main` branch. 🚀
 
 ### 4. Next Session Guardrails
-- **DO NOT** revert the 6-digit regex logic in `parse_service.py`.
-- **DO NOT** remove the brand-name pre-filter in `store_service.py`.
-- **DO NOT** re-upload the full store list to Firestore if not necessary (use existence check in `seed_stores.py`).
+- **DO NOT** revert the two-step OCR logic in `/api/ocr` or `/api/checkout/...`.
+- **DO NOT** simplify the 6-digit regex logic in `parse_service.py`.

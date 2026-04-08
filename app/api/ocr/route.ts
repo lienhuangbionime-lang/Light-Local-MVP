@@ -25,74 +25,76 @@ export async function POST(req: NextRequest) {
         }
 
 
-        const prompt =
-            "Extract the line items from this receipt or invoice. Return ONLY a valid JSON array where each object has 'name' (string, the product name), 'foreignPrice' (number, the unit cost found), and 'quantity' (number). \n\nIMPORTANT: Start your response directly with '[' and end with ']'. Do not include any markdown formatting, preamble, role summary, or explanation."
-
-        // 使用環境變數中的模型，預設採用 gemma-4-31b-it
+        // --- STEP 1: PURE OCR TRANSCRIPTION ---
+        const ocrPrompt = "請把這張圖片中所有可見的文字，一字不漏地轉錄為純文字。不要翻譯、不要解釋、不要加任何說明，只輸出原始文字內容。"
         const modelName = process.env.GEMINI_VISION_MODEL || "models/gemma-4-31b-it"
         const cleanModelName = modelName.startsWith("models/") ? modelName : `models/${modelName}`
         const url = `https://generativelanguage.googleapis.com/v1beta/${cleanModelName}:generateContent?key=${apiKey}`
         
-        const response = await fetch(url, {
+        const ocrResponse = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 contents: [{
                     parts: [
-                        { text: prompt },
+                        { text: ocrPrompt },
                         { inline_data: { mime_type: mimeType, data: cleanedBase64 } }
                     ]
                 }]
             })
         })
 
-        const rawText = await response.text()
-        if (!response.ok) {
-            console.error("Gemini API Error status:", response.status)
-            console.error("Gemini API Error body:", rawText)
-            let errorDetail: any = null
-            try {
-                errorDetail = JSON.parse(rawText)
-            } catch {
-                // ignore
-            }
-            return NextResponse.json(
-                {
-                    error:
-                        errorDetail?.error?.message ||
-                        "Gemini API 請求失敗，請稍後再試",
-                },
-                { status: response.status }
-            )
+        if (!ocrResponse.ok) {
+            const rawText = await ocrResponse.text()
+            console.error("Gemini OCR Error:", rawText)
+            return NextResponse.json({ error: "Gemini OCR 請求失敗" }, { status: ocrResponse.status })
         }
 
-        let data: any
+        const ocrData = await ocrResponse.json()
+        const rawOcrText = ocrData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || ""
+
+        if (!rawOcrText) {
+            return NextResponse.json({ error: "無法從圖片中辨識出文字" }, { status: 500 })
+        }
+
+        // --- STEP 2: STRUCTURED PARSING FROM TEXT ---
+        const parsePrompt = `
+你是一位專業的「進貨單據解析小幫手」。請從下方的【OCR 轉錄文字】中，萃取出品項清單。
+請【嚴格】回傳一個 JSON 陣列，每個物件包含：
+- "name": (string) 產品品名
+- "foreignPrice": (number) 外幣單價 (VND)
+- "quantity": (number) 數量
+
+【OCR 轉錄文字】：
+${rawOcrText}
+
+【規則】：
+1. 僅回傳 JSON 陣列，禁止任何前導、後導文字。
+2. 不要包含 Markdown 格式 (不要 \`\`\`json)。
+3. 若數字中含有逗號 (如 150,000)，請移除逗號轉為數字 (150000)。
+`
+
+        const parseResponse = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{ text: parsePrompt }]
+                }]
+            })
+        })
+
+        if (!parseResponse.ok) {
+             const rawText = await parseResponse.text()
+             console.error("Gemini Parsing Error:", rawText)
+             return NextResponse.json({ error: "Gemini 解析 CSV 失敗" }, { status: parseResponse.status })
+        }
+
+        const parseData = await parseResponse.json()
+        const textResponse = parseData.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || ""
+
         try {
-            data = JSON.parse(rawText)
-        } catch (e) {
-            console.error("Gemini 回傳非 JSON 內容:", rawText)
-            return NextResponse.json(
-                { error: "Gemini 回傳格式非 JSON，請稍後再試" },
-                { status: 502 }
-            )
-        }
-
-        const textResponse =
-            data.candidates?.[0]?.content?.parts
-                ?.map((p: any) => p.text || "")
-                .join("") || ""
-
-        if (!textResponse) {
-            console.error("Empty response from Gemini:", data)
-            return NextResponse.json(
-                { error: "無法從圖片中辨識出內容" },
-                { status: 500 }
-            )
-        }
-
-        try {
-            // --- ROBUST EXTRACTION ---
-            // Use regex to find the array block [ ... ] in case of preamble/echoing
+            // Robust extraction of JSON array
             const jsonMatch = textResponse.match(/\[\s*\{[\s\S]*\}\s*\]/)
             const cleanedJson = jsonMatch ? jsonMatch[0] : textResponse.replace(/^```json\s*|\s*```$/g, "").trim()
             
@@ -102,7 +104,7 @@ export async function POST(req: NextRequest) {
             console.error("Failed to parse Gemini output as JSON:", textResponse)
             return NextResponse.json(
                 {
-                    error: "JSON 解析失敗，請再試一次或手動輸入",
+                    error: "JSON 解析失敗，請手動輸入",
                     raw: textResponse,
                 },
                 { status: 500 }

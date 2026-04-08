@@ -1,14 +1,16 @@
 import sys
 import os
 
-# [ULTRA-STABLE] Force absolute path resolution
-# This ensures that even when Gunicorn starts from a sub-directory, 
-# the project root is always identified and added to sys.path.
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# [CRITICAL FIX] Render/Cloud Path Logic
+# Always ensure the project root is in sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
-print(f"📡 [SYSTEM] Project Root: {PROJECT_ROOT} | ENV_PORT: {os.environ.get('PORT')}")
+print(f"[SYSTEM] Path Fix: current={current_dir}, parent={parent_dir}")
 
 from fastapi import FastAPI, UploadFile, File, Form, Header, BackgroundTasks, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -40,75 +42,29 @@ from backend.services.fb_service import (
 from backend.services.order_service import process_order, handle_admin_secretarial_work
 from backend.database.firebase import init_firebase
 
-def init_firebase():
-    global db
-    try:
-        # Avoid duplicate initialization
-        if firebase_admin._apps:
-            db = firestore.client()
-            return
-            
-        if os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON"):
-            import json
-            cred_dict = json.loads(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON"))
-            cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred)
-            print("[FIREBASE] 使用環境變數初始化成功")
-        else:
-            # Fallback for local
-            POTENTIAL_PATHS = [
-                config.FIREBASE_KEY_PATH,
-                "serviceAccountKey.json"
-            ]
-            target_path = next((p for p in POTENTIAL_PATHS if os.path.exists(p)), None)
-            if target_path:
-                cred = credentials.Certificate(target_path)
-                firebase_admin.initialize_app(cred)
-            else:
-                print("[WARNING] 找不到 Firebase 金鑰，切回 Mock 模式")
-        
-        db = firestore.client()
-    except Exception as e:
-        print(f"[ERROR] Firebase 初始化失敗: {e}")
-
-def clean_b64(b64_str: str) -> str:
-    """去除 data:image/xxx;base64, 前綴"""
-    if "," in b64_str:
-        return b64_str.split(",")[1]
-    return b64_str
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """管理全域資源生命週期 (快速啟動版)"""
-    print(f"🚀 [INIT] 預備啟動伺服器... (Instance: {INSTANCE_ID})")
-    
-    # 1. 核心初始化 (極速)
-    init_firebase()
-    
-    async def fast_startup_task():
-        """背景加載耗時資源，不阻塞健康檢查"""
-        try:
-            print(f"🧠 [INIT] 背景載入數據中... (PID: {os.getpid()})")
-            await load_orders()
-            await load_events()
-            
-            from backend.services.store_service import _load_stores_into_memory
-            print("📦 [INIT] 開始載入 6 萬筆門市大資料...")
-            _load_stores_into_memory()
-
-            if config.PAGE_ACCESS_TOKEN:
-                await subscribe_page_to_app(config.PAGE_ACCESS_TOKEN)
-            print("✅ [INIT] 數據背景載入與初始化成功")
-        except Exception as e:
-            print(f"❌ [INIT] 背景載入失敗: {e}")
-
-    # 啟動背景任務，讓 lifespan 提早 yield (進入 Ready 狀態)
-    asyncio.create_task(fast_startup_task())
-    
+    """管理全域資源生命週期"""
+    print(f"[SYSTEM] 啟動背景同步任務... (Instance: {INSTANCE_ID})")
+    try:
+        init_firebase()
+        # [CRITICAL] Background the loading to pass Render health checks FAST
+        async def loader():
+            try:
+                await asyncio.gather(load_orders(), load_events())
+                if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
+                    from backend.services.fb_service import subscribe_page_to_app
+                    await asyncio.wait_for(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN), timeout=15.0)
+                print("[SYSTEM] 數據載入與 FB 訂閱完成")
+            except Exception as le:
+                print(f"[ERROR] 背景加載失敗: {le}")
+        
+        asyncio.create_task(loader())
+        print("[SYSTEM] 異步初始化啟動")
+    except Exception as e:
+        print(f"[ERROR] 初始化啟動失敗: {e}")
     yield
-    
-    # 關閉資源
-    print("[EXIT] 正在關閉全域連線...")
+    print("[SYSTEM] 正在關閉全域連線...")
     await global_client.aclose()
 
 app = FastAPI(title="EchoOrder Buffer Gateway", lifespan=lifespan)
@@ -295,10 +251,6 @@ async def update_seller_config(
         config.BUYER_SHIPPING_FEE = int(data["buyer_shipping_fee"])
     if "platform_shipping_fee" in data:
         config.PLATFORM_SHIPPING_FEE = int(data["platform_shipping_fee"])
-    
-    # 🚀 [PERSISTENCE] Ensure changes are saved to cloud config
-    await save_orders(save_config=True, fields=["free_shipping_threshold", "buyer_shipping_fee", "platform_shipping_fee"])
-    
     return {"status": "ok"}
 
 @app.post("/api/seller/sync_stores")
@@ -415,9 +367,7 @@ async def get_checkout(order_id: str, s: Optional[str] = None):
         order_data["config"] = {
             "products": config.ACTIVE_PRODUCTS,
             "free_shipping_threshold": config.FREE_SHIPPING_THRESHOLD,
-            "shipping_fee": config.SHIPPING_FEE,
-            "buyer_shipping_fee": config.BUYER_SHIPPING_FEE,
-            "platform_shipping_fee": config.PLATFORM_SHIPPING_FEE
+            "shipping_fee": config.SHIPPING_FEE
         }
         for item in order_data.get("items", []):
             p_data = config.ACTIVE_PRODUCTS.get(item["product_code"], {})
@@ -426,184 +376,97 @@ async def get_checkout(order_id: str, s: Optional[str] = None):
         return order_data
     raise HTTPException(status_code=404, detail="Order not found")
 
-async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "checkout"):
-    """🧠 Background Task for AI Vision processing"""
+@app.post("/api/checkout/{order_id}/ai_fill")
+async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = None):
+    """從圖片中辨識收件人資訊 (客戶端專用)"""
+    if not verify_order_signature(order_id, s):
+        print(f"[SECURITY] AI Fill blocked: Invalid Signature (order={order_id})")
+        raise HTTPException(status_code=403, detail="Invalid Signature")
+        
+    from backend.services.ai_service import ask_gemini_secretary
     try:
-        # Step 0: Clean Image Data
-        image_data = clean_b64(image_b64)
-        img_size = len(image_data)
+        data_json = await request.json()
+        image_b64 = data_json.get("image")
+        if not image_b64:
+             return {"status": "error", "message": "未接收到圖片資料"}
+
+        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片中【發現】所有可能的收件資訊。
+請【嚴格】回傳以下 JSON 格式。
+
+【規則 (最高優先級)】：
+1. **多重探測 (Candidates)**：在 `store_candidates` 中列出所有你在圖中看到的「店名」或「6位數字」。
+2. **數字排除**：
+   - 看到年份數字 (如 113, 2024, 2025)：**禁止放入 candidates**。
+   - 看到發票號碼 (含英文或 8 位以上純數字)：**禁止放入 candidates**。
+3. **店名提取**：請提取如「旗山旗力」、「港富」等獨特名字。
+4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
+
+【JSON 格式要求】：
+{
+  "buyer_name": "買家姓名",
+  "phone": "10 碼電話",
+  "store_candidates": ["店號1", "店名1", "店號2"...]
+}"""
         
-        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 1: Base64 Decoded ({img_size} bytes)"})
-
-        if order_id not in config.ORDER_POOL:
-            await sync_orders_from_cloud()
-        if order_id not in config.ORDER_POOL and task_type == "checkout":
-            return
-
-        order = config.ORDER_POOL.get(order_id)
-        if order:
-            order.ai_status = "processing"
-            from backend.database.firebase import save_orders
-            await save_orders(order_id=order_id, fields=["ai_status"])
-
-        # --- Prompt Selection ---
-        if task_type == "digitize":
-            # [DIGITIZE PROMPT] Focus on product items
-            prompt = """You are the EchoOrder Digitize Specialist.
-Task: Extract item list from an invoice/receipt screenshot.
-Output Format: Strict JSON `{"items": [{"name": "...", "foreignPrice": ..., "quantity": ...}, ...]}`.
-
-Rules:
-1. `name`: Item name (original or translated from Vietnamese).
-2. `foreignPrice`: Unit price as numbers only.
-3. `quantity`: Quantity as numbers only.
-4. Language: Supports Traditional Chinese and Vietnamese."""
-        else:
-            # [CHECKOUT PROMPT] Focus on buyer contact info
-            prompt = """You are the EchoOrder Checkout Helper.
-Task: Extract contact info from a conversation screenshot or address sticker.
-Output Format: Strict JSON `{"buyer_name": "...", "phone": "...", "store_candidates": ["..."], "shipping_info": "..."}`.
-
-Rules:
-1. `store_candidates`: List any store names (e.g., 旗山旗力, 港富) or 6-digit store codes you see. 
-2. `buyer_name`: Target person's name.
-3. Language: Supports Traditional Chinese and Vietnamese."""
+        extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
         
-        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 2: Sending to Gemini (Model: {config.GEMINI_VISION_MODEL})"})
-        from backend.services.ai_service import ask_gemini_secretary, transcribe_image_text
-        extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_data, system_prompt=prompt)
-        
+        # 1. Initialize result structure if AI failed to return JSON
         if not extracted or not isinstance(extracted, dict):
+            print(f"[AI_FILL] AI Secretary failed to return JSON, using Empty/OCR Fallback.")
             extracted = {"buyer_name": "", "phone": "", "store_candidates": [], "items": []}
         
-        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 3: OCR Fallback Start"})
+        # 2. Clean phone
+        if extracted.get("phone"):
+            extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
+        
+        # 3. [ROBUST] OCR Two-Step fallback: Runs even if AI JSON failed
+        from backend.services.ai_service import transcribe_image_text
         from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
         from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
         
-        ocr_text = await transcribe_image_text(image_data)
+        ocr_text = await transcribe_image_text(image_b64)
         ocr_candidates = []
         if ocr_text:
             ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
             name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
             ocr_candidates = name_matched_ids + ocr_candidates
         
-        # Apply result
-        if task_type == "checkout" and order:
-            if extracted.get("buyer_name") and not order.buyer_name:
-                order.buyer_name = extracted["buyer_name"]
-            if extracted.get("phone") and not order.phone:
-                order.phone = extracted["phone"]
-            if extracted.get("shipping_info") and not order.shipping_info:
-                order.shipping_info = extracted["shipping_info"]
-            
-            order.ai_status = "done"
-            order.ai_error = None
+        # 4. Merge results
+        ai_candidates = extracted.get("store_candidates", [])
+        if extracted.get("shipping_info"): ai_candidates.append(extracted["shipping_info"])
+        all_candidates = ocr_candidates + ai_candidates
         
-        elif task_type == "digitize" and order:
-            # Properly extract the item list for digitization
-            if extracted.get("items") and isinstance(extracted["items"], list):
-                # We store the list of objects directly. The frontend expects this in 'data'
-                order.shipping_info = extracted # This is what get_digitize_status returns
-                order.ai_status = "done"
-                order.ai_error = None
-            else:
-                order.ai_status = "failed"
-                order.ai_error = "Could not extract item list from invoice."
-            
-        await save_orders(order_id=order_id)
-        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 4: resolve_store_info Result -> Success"})
-        print(f"[AI_FILL] Order {order_id} ({task_type}) processed successfully.")
-
-    except Exception as e:
-        import traceback
-        error_msg = f"Background task failed: {str(e)}\n{traceback.format_exc()}"
-        print(f"[AI_FILL] {error_msg}")
+        verified_store = await resolve_store_info("", candidates=all_candidates)
+        extracted["shipping_info"] = verified_store
         
+        # 5. Persist to Firebase
         if order_id in config.ORDER_POOL:
-            config.ORDER_POOL[order_id].ai_status = "failed"
-            config.ORDER_POOL[order_id].ai_error = str(e)
-            from backend.database.firebase import save_orders
-            await save_orders(order_id=order_id, fields=["ai_status", "ai_error"])
+             order = config.ORDER_POOL[order_id]
+             has_update = False
+             if extracted.get("buyer_name") and not order.buyer_name:
+                 order.buyer_name = extracted["buyer_name"]; has_update = True
+             if extracted.get("phone") and not order.phone:
+                 order.phone = extracted["phone"]; has_update = True
+             if extracted.get("shipping_info") and not order.shipping_info:
+                 order.shipping_info = extracted["shipping_info"]; has_update = True
+             
+             if has_update:
+                 order.status = "PENDING"
+                 from backend.database.firebase import save_orders
+                 await save_orders(order_id=order_id)
+
+        # Return success if we have at least one valid field
+        if any([extracted.get("buyer_name"), extracted.get("phone"), extracted.get("shipping_info")]):
+            print(f"[AI_FILL] Final Result: {extracted}")
+            from backend.database.firebase import save_events
+            await save_events()
+            return {"status": "success", "data": extracted}
         
-        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] CRASH: {str(e)[:100]}"})
-
-@app.post("/api/digitize/ocr")
-async def start_digitize_ocr(data: Dict, background_tasks: BackgroundTasks):
-    """[NEW] Start an async digitization job"""
-    job_id = f"DIG_{uuid.uuid4().hex[:8]}"
-    image_b64 = data.get("image") or data.get("imageBase64")
-    
-    if not image_b64:
-        raise HTTPException(status_code=400, detail="Missing image data")
-    
-    # Create a dummy order entry to track status
-    from backend.models.schemas import Order
-    new_job = Order(
-        order_id=job_id,
-        ai_status="processing",
-        created_at=int(time.time()),
-        buyer_name="Digitize Session"
-    )
-    config.ORDER_POOL[job_id] = new_job
-    
-    background_tasks.add_task(do_ai_fill_task, job_id, image_b64, task_type="digitize")
-    return {"job_id": job_id, "status": "processing"}
-
-@app.get("/api/digitize/{job_id}/status")
-async def get_digitize_status(job_id: str):
-    if job_id not in config.ORDER_POOL:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    job = config.ORDER_POOL[job_id]
-    return {
-        "job_id": job_id,
-        "ai_status": job.ai_status,
-        "ai_error": job.ai_error,
-        "data": job.shipping_info if job.ai_status == "done" else None
-    }
-async def ai_fill_order(order_id: str, data: Dict, background_tasks: BackgroundTasks, s: Optional[str] = None):
-    if not verify_order_signature(order_id, s):
-        raise HTTPException(status_code=403, detail="Invalid Signature")
-    
-    image_b64 = data.get("image")
-    if not image_b64:
-        return {"status": "error", "message": "Missing image data"}
-
-    if order_id not in config.ORDER_POOL:
-        await sync_orders_from_cloud()
-    
-    if order_id in config.ORDER_POOL:
-        order = config.ORDER_POOL[order_id]
-        if order.ai_status == "processing":
-            return {"status": "processing", "message": "Already processing"}
-        
-        order.ai_status = "processing"
-        background_tasks.add_task(do_ai_fill_task, order_id, image_b64, task_type="checkout")
-        return {"status": "processing", "message": "Job started in background"}
-
-    return {"status": "error", "message": "Order not found"}
-
-@app.get("/api/checkout/{order_id}/status")
-async def get_order_ai_status(order_id: str, s: Optional[str] = None):
-    if not verify_order_signature(order_id, s):
-        raise HTTPException(status_code=403, detail="Invalid Signature")
-    
-    if order_id not in config.ORDER_POOL:
-        await sync_orders_from_cloud()
-        
-    if order_id in config.ORDER_POOL:
-        order = config.ORDER_POOL[order_id]
-        return {
-            "order_id": order_id,
-            "ai_status": order.ai_status,
-            "ai_error": order.ai_error,
-            "data": {
-                "buyer_name": order.buyer_name,
-                "phone": order.phone,
-                "shipping_info": order.shipping_info
-            }
-        }
-    raise HTTPException(status_code=404, detail="Order not found")
+        print(f"[AI_FILL] All recognition methods failed for image.")
+        return {"status": "error", "message": "AI 無法從此圖片辨識到有效的姓名、電話或門市。"}
+    except Exception as e:
+        print(f"[AI_FILL] 處理崩潰: {e}")
+        return {"status": "error", "message": f"伺服器處理異常: {str(e)}"}
 
 @app.post("/api/checkout/{order_id}/confirm")
 async def confirm_checkout(order_id: str, data: Dict, s: Optional[str] = None):
@@ -860,13 +723,11 @@ async def export_orders():
 
 if __name__ == "__main__":
     import uvicorn
-    # Render 會注入 PORT 環境變數，若無則預設 8000
-    port_str = os.environ.get("PORT", "8000")
-    port = int(port_str)
-    print(f"🔥 [SYSTEM] 啟動伺服器於 Port: {port}")
+    # Render 會注入 PORT 環境變數，若無則預設 10000 (Render 預設) 或 8000
+    port = int(os.environ.get("PORT", 8000))
+    print(f"[SYSTEM] 啟動伺服器於 Port: {port} (RELOAD=True)")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
 else:
-    # 這是被 uvicorn 命令列啟動時 (例如 Cloud/Docker)
+    # 這是被 uvicorn 命令列啟動時 (例如 Docker/Render)
     import os
-    port = os.environ.get("PORT", "Unknown")
-    print(f"📡 [SYSTEM] 模組載入中... (RUNNING_ON_CLOUD, PORT={port})")
+    print(f"[SYSTEM] 模組載入中... PORT={os.environ.get('PORT')}")

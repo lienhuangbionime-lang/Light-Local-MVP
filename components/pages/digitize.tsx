@@ -15,7 +15,7 @@ interface ImportItem {
   id: string
   name: string
   foreignPrice: number
-  quantity: number | ""
+  quantity: number
   description?: string
   material?: string
   sizes?: string
@@ -39,62 +39,44 @@ export function DigitizePage() {
   const [items, setItems] = useState<ImportItem[]>([
     { id: "1", name: "", foreignPrice: 0, quantity: 1, description: "", material: "", sizes: "", colors: "", suggestedPrice: "" },
   ])
-  const [isListening, setIsListening] = useState(false)
+  const [extractionError, setExtractionError] = useState<string | null>(null)
 
   const handleUpload = async (e?: React.ChangeEvent<HTMLInputElement>) => {
     if (!e || !e.target.files || e.target.files.length === 0) return
 
     const file = e.target.files[0]
     setIsUploading(true)
+    setExtractionError(null)
 
     try {
-      const reader = new FileReader()
+      // 1. Convert to Base64 using a Promise so we can await it
       const base64String = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
         reader.readAsDataURL(file)
-        reader.onload = () => resolve(reader.result as string)
+        reader.onload = () => resolve((reader.result as string).split(",")[1])
         reader.onerror = () => reject(new Error("Failed to read file"))
       })
 
-      // 1. Detect Backend URL (smarter fallback)
-      const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-      const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-      const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : "");
-      
-      const apiBase = searchParams.get('backend') || searchParams.get('b') || 
-                      (isLocalhost ? "http://localhost:8000" : (isVercel ? "https://light-local-mvp.onrender.com" : ""));
-      
-      // 2. Start Async OCR Job
-      const startRes = await fetch(`${apiBase}/api/digitize/ocr`, {
+      // 2. Call OCR Endpoint
+      const response = await fetch("/api/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64String })
+        body: JSON.stringify({
+          imageBase64: base64String,
+          mimeType: file.type || "image/jpeg",
+          apiKey: geminiApiKey
+        })
       })
 
-      if (!startRes.ok) throw new Error("無法啟動辨識任務")
-      const { job_id } = await startRes.json()
-
-      // 3. Poll for result
-      let attempts = 0
-      const maxAttempts = 60 // 120 seconds total (2s * 60) to account for cloud latency
-      
-      const poll = async (): Promise<any> => {
-        if (attempts >= maxAttempts) throw new Error("辨識逾時，請重試")
-        attempts++
-        
-        const statusRes = await fetch(`${apiBase}/api/digitize/${job_id}/status`)
-        const statusData = await statusRes.json()
-        
-        if (statusData.ai_status === "done") return statusData.data
-        if (statusData.ai_status === "failed") throw new Error(statusData.ai_error || "辨識失敗")
-        
-        await new Promise(r => setTimeout(r, 2000))
-        return poll()
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || t("digitize.error_api"))
       }
 
-      const extracted = await poll()
+      const data = await response.json()
 
-      if (extracted && extracted.items) {
-        const mappedItems = extracted.items.map((item: any) => ({
+      if (data.items && Array.isArray(data.items)) {
+        const mappedItems = data.items.map((item: any) => ({
           id: crypto.randomUUID(),
           name: item.name || t("digitize.unnamed_product"),
           foreignPrice: item.foreignPrice || 0,
@@ -110,9 +92,12 @@ export function DigitizePage() {
           title: t("digitize.toast_success_title"),
           description: t("digitize.toast_success_desc").replace("{count}", mappedItems.length.toString()),
         })
+      } else {
+        throw new Error("Invalid format from OCR")
       }
     } catch (error: any) {
       console.error(error)
+      setExtractionError(error.message || t("digitize.toast_error_desc"))
       toast({
         title: t("digitize.toast_error_title"),
         description: error.message || t("digitize.toast_error_desc"),
@@ -126,19 +111,18 @@ export function DigitizePage() {
   const calculateTwdCost = (item: ImportItem) => {
     const rate = parseFloat(exchangeRate) || 800
     const baseTwd = item.foreignPrice * (1000 / rate)
-    const qty = Number(item.quantity) || 0
 
     // Convert shipping from VND to TWD
     const shippingVnd = parseFloat(shippingCost) || 0
     const totalShippingTwd = shippingVnd * (1000 / rate)
 
-    const validItems = items.filter(i => i.name.trim() && (Number(i.quantity) || 0) > 0)
-    const totalQuantity = validItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0)
+    const validItems = items.filter(i => i.name.trim() && i.quantity > 0)
+    const totalQuantity = validItems.reduce((sum, i) => sum + i.quantity, 0)
 
     const shippingPerItemTwd = totalQuantity > 0 ? (totalShippingTwd / totalQuantity) : 0
-    const itemShippingTwd = shippingPerItemTwd * (Number(item.quantity) || 0)
+    const itemShippingTwd = shippingPerItemTwd * item.quantity
 
-    return Math.round(baseTwd + (itemShippingTwd / (Number(item.quantity) || 1)))
+    return Math.round(baseTwd + (itemShippingTwd / item.quantity))
   }
 
   const addItem = () => {
@@ -161,13 +145,7 @@ export function DigitizePage() {
       prevItems.map((item) => {
         if (item.id !== id) return item;
         
-        let processedValue = value;
-        // Allow empty string for numeric fields during editing
-        if ((field === "quantity" || field === "foreignPrice") && value === "") {
-          processedValue = "";
-        }
-        
-        const newItem = { ...item, [field]: processedValue };
+        const newItem = { ...item, [field]: value };
         
         if (field === "name" && typeof value === "string" && value.trim()) {
           const match = storeItems.find(si => si.name.toLowerCase().trim() === value.toLowerCase().trim());
@@ -220,7 +198,7 @@ export function DigitizePage() {
       return
     }
 
-    const validItems = items.filter((item) => item.name.trim() && (Number(item.quantity) || 0) > 0)
+    const validItems = items.filter((item) => item.name.trim() && item.quantity > 0)
     if (validItems.length === 0) {
       toast({
         title: t("digitize.error_no_items"),
@@ -244,7 +222,7 @@ export function DigitizePage() {
       addStoreItem({
         name: item.name,
         foreignCost: item.foreignPrice,
-        quantity: Number(item.quantity) || 1,
+        quantity: item.quantity,
         batchId: tempBatchId,
         weightRatio: 1, // Default
         description: item.description,
@@ -274,30 +252,6 @@ export function DigitizePage() {
     setHasUploaded(false)
     setShipmentName("")
     setItems([{ id: "1", name: "", foreignPrice: 0, quantity: 1, description: "", material: "", sizes: "", colors: "", suggestedPrice: "" }])
-  }
-
-  const handleVoiceInput = (transcript: string) => {
-    // Basic parser for "Product Name Quantity"
-    // e.g., "Apple 10", "蘋果 十", "Bánh 5"
-    const match = transcript.match(/^(.+?)\s*(\d+)$/);
-    if (match) {
-      const name = match[1].trim();
-      const qty = parseInt(match[2]);
-      if (name) {
-        setItems(prev => [
-          ...prev.filter(i => i.name.trim() !== "" || i.foreignPrice !== 0), // Remove empty rows
-          { id: crypto.randomUUID(), name, foreignPrice: 0, quantity: qty, description: "Voice Input", material: "", sizes: "", colors: "", suggestedPrice: "" }
-        ]);
-        toast({ title: t("digitize.voice_added") || "語音加入成功", description: `${name} x ${qty}` });
-      }
-    } else {
-      // Fallback: just add the whole transcript as name
-      setItems(prev => [
-        ...prev.filter(i => i.name.trim() !== "" || i.foreignPrice !== 0),
-        { id: crypto.randomUUID(), name: transcript, foreignPrice: 0, quantity: 1, description: "Voice Input", material: "", sizes: "", colors: "", suggestedPrice: "" }
-      ]);
-      toast({ title: t("digitize.voice_added") || "語音加入成功", description: transcript });
-    }
   }
 
   return (
@@ -362,6 +316,12 @@ export function DigitizePage() {
               >
                 {t("digitize.manual_input_btn")}
               </Button>
+
+              {extractionError && (
+                <div className="text-sm opacity-90 text-destructive mt-2">
+                  Could not extract item list from invoice.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -461,21 +421,16 @@ export function DigitizePage() {
                       <div className="flex gap-1 mt-1">
                         <Input
                           type="number"
+                          min="1"
                           value={item.quantity}
                           onChange={(e) =>
-                            updateItem(item.id, "quantity", e.target.value === "" ? "" : (parseInt(e.target.value) || ""))
+                            updateItem(item.id, "quantity", parseInt(e.target.value) || 1)
                           }
-                          onBlur={(e) => {
-                            if (e.target.value === "" || parseInt(e.target.value) < 1) {
-                              updateItem(item.id, "quantity", 1)
-                            }
-                          }}
-                          onFocus={(e) => e.target.select()}
                           className="h-9"
                         />
                         {item.sizes && item.sizes.includes(",") && (
                           <SizeSplitter 
-                            total={Number(item.quantity) || 0} 
+                            total={item.quantity} 
                             sizeString={item.sizes} 
                             onConfirm={(breakdown) => splitItemBySizes(item.id, breakdown)}
                           />
@@ -534,17 +489,14 @@ export function DigitizePage() {
                 </div>
               ))}
 
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={addItem}
-                  className="flex-1 border-dashed"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  {t("digitize.add_item_btn")}
-                </Button>
-                <VoiceButton onTranscript={handleVoiceInput} language={useAppStore.getState().language} />
-              </div>
+              <Button
+                variant="outline"
+                onClick={addItem}
+                className="w-full border-dashed"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                {t("digitize.add_item_btn")}
+              </Button>
             </CardContent>
           </Card>
 
@@ -625,69 +577,4 @@ function SizeSplitter({ total, sizeString, onConfirm }: { total: number, sizeStr
       </DialogContent>
     </Dialog>
   )
-}
-
-function VoiceButton({ onTranscript, language }: { onTranscript: (t: string) => void, language: string }) {
-  const [isListening, setIsListening] = useState(false);
-  const { toast } = useToast();
-
-  const startListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast({ title: "不支援語音", description: "您的瀏覽器不支援 Web Speech API", variant: "destructive" });
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = language === "vi" ? "vi-VN" : "zh-TW";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = (event: any) => {
-      console.error("[SPEECH ERROR]", event.error);
-      setIsListening(false);
-      
-      let errorMsg = "語音辨識發生錯誤";
-      let errorDesc = event.error;
-
-      if (event.error === "not-allowed") {
-        errorMsg = "權限被拒絕";
-        errorDesc = "請檢查瀏覽器設定，確保已允許麥克風權限。\n若是在區域網路環境，請使用 localhost 或 HTTPS 存取。";
-      } else if (event.error === "no-speech") {
-        errorMsg = "未偵測到聲音";
-        errorDesc = "請再試一次，並確保麥克風收音正常。";
-      } else if (event.error === "network") {
-        errorMsg = "網路連線錯誤";
-        errorDesc = "Google 語音辨識需要網際網路連線。";
-      }
-
-      toast({ 
-        title: errorMsg, 
-        description: errorDesc, 
-        variant: "destructive" 
-      });
-    };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      onTranscript(transcript);
-    };
-
-    recognition.start();
-  };
-
-  return (
-    <Button 
-      variant={isListening ? "default" : "outline"} 
-      onClick={startListening}
-      className={isListening ? "animate-pulse border-primary bg-primary text-primary-foreground" : "border-primary/30 text-primary"}
-    >
-      <div className="flex items-center gap-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-mic"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-        <span className="text-xs">{isListening ? "聆聽中..." : "語音輸入"}</span>
-      </div>
-    </Button>
-  );
 }

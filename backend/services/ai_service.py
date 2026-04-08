@@ -36,21 +36,15 @@ async def get_gemini_embedding(text: str) -> Optional[List[float]]:
         print(f"[AI] Embedding 呼叫異常: {e}")
     return None
 
-async def call_ai_studio(model_name: str, contents: List[Dict], system_instruction: Optional[str] = None) -> Optional[str]:
-    """通用 Google AI Studio API 呼叫函式
-    [system_instruction support]: 支援獨立的系統指令塊以提升模型穩定性
-    """
+async def call_ai_studio(model_name: str, contents: List[Dict]) -> Optional[str]:
+    """通用 Google AI Studio API 呼叫函式"""
     if not config.GEMINI_API_KEY:
         return None
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={config.GEMINI_API_KEY}"
     
-    payload = {"contents": contents}
-    if system_instruction:
-        payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
-    
     try:
-        res = await global_client.post(url, json=payload, timeout=60.0)
+        res = await global_client.post(url, json={"contents": contents}, timeout=60.0)
         if res.status_code == 200:
             raw_res = res.json()
             return raw_res.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
@@ -67,14 +61,7 @@ async def transcribe_image_text(image_data_base64: str, mime_type: str = "image/
     if not config.GEMINI_API_KEY or not image_data_base64:
         return None
     
-    ocr_prompt = """
-請把這張圖片中所有可見的文字，一字不漏地轉錄為純文字。
-【轉錄規範】：
-1. 嚴禁翻譯、嚴禁解釋、嚴禁加任何 Role/Task 說明。
-2. 僅輸出原始文字內容。
-3. 若圖中有手寫文字，請盡力辨識並轉錄。
-請將轉錄結果包裹在 `[START_OCR]` 與 `[END_OCR]` 標記之間。
-"""
+    ocr_prompt = "請把這張圖片中所有可見的文字，一字不漏地轉錄為純文字。不要翻譯、不要解釋、不要加任何說明，只輸出原始文字內容。"
     
     parts = [
         {"text": ocr_prompt},
@@ -83,13 +70,6 @@ async def transcribe_image_text(image_data_base64: str, mime_type: str = "image/
     
     pure_model = config.GEMINI_VISION_MODEL.replace("models/", "")
     raw_text = await call_ai_studio(pure_model, [{"parts": parts}])
-    
-    # [NEW] Clean OCR output using delimiters
-    if raw_text:
-        ocr_match = re.search(r'\[START_OCR\]\s*([\s\S]*?)\s*\[END_OCR\]', raw_text)
-        if ocr_match:
-            raw_text = ocr_match.group(1).strip()
-            
     print(f"[OCR] 轉錄完成，共 {len(raw_text) if raw_text else 0} 字元")
     return raw_text
 
@@ -154,34 +134,20 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
 def clean_json_output(text: str) -> str:
     """
     Strips role-echoing preamble, markdown blocks, and trailing noise from AI output.
-    [NEW] Handles mirrored prompt blocks by searching for the FIRST valid JSON structure.
+    Attempts to extract the first valid {...} or [...] block.
     """
     if not text:
         return ""
     
-    # [NEW] Remove known prompt snippets if they appear at the start (mirroring fix)
-    snippets = ["Role:", "Task:", "Output Format:", "EchoOrder"]
-    for s in snippets:
-        if text.strip().startswith(s) or ("* " + s) in text[:200]:
-            # If we see these, it's likely mirroring. We MUST find the JSON block.
-            break
-
-    # 1. Try to find an array block (common for Digitize)
-    array_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', text)
-    if array_match:
-        return array_match.group(0)
-
-    # 2. Search for any JSON-like structure (braces)
-    json_blocks = re.findall(r'\{[\s\S]*\}', text)
-    if json_blocks:
-        # Sort by length and take the longest one
-        json_blocks.sort(key=len, reverse=True)
-        cleaned = json_blocks[0]
-        # Final cleanup of markdown clutter
-        cleaned = cleaned.replace("```json", "").replace("```", "").strip()
-        return cleaned
-
-    return text.strip()
+    # 1. Look for JSON blocks specifically
+    # Use non-greedy match for the content between braces or brackets
+    match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    if match:
+        return match.group(0)
+    
+    # 2. Fallback: manual cleanup of common markers
+    cleaned = text.replace("```json", "").replace("```", "").strip()
+    return cleaned
 
 async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[str] = None, mime_type: str = "image/jpeg", system_prompt: Optional[str] = None, history: Optional[str] = None) -> Optional[Dict]:
     """使用 Gemma 4 31B IT 進行深度解析 (主管角色 - 支援圖片與手寫辨識)"""
@@ -201,10 +167,8 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 - **店號優先**：如果看到 6 位數字（店號），優先放入 `store_candidates`。
 
 【JSON 格式要求】：
-請將結果包裹在 `[START_JSON]` 與 `[END_JSON]` 標記之間。
 回傳必須僅包含 JSON 內容，禁止任何 Role/Task 說明、禁止前導文字。
 格式範本：
-[START_JSON]
 {{
   "buyer_name": "姓名",
   "phone": "電話",
@@ -212,16 +176,14 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
   "items": [{{ "product_code": "代號", "quantity": 數量 }}],
   "shipping_info": "對話頁面或貼紙上的完整地址（原文照抄）"
 }}
-[END_JSON]
 
 【當前商品代號表 (參考用)】：
 {json.dumps(ACTIVE_PRODUCTS, ensure_ascii=False)}
 
 【負面約束 (絕對禁止)】：
 - 絕對不要複讀你的 Role 或 Task。
-- 絕對不要回傳任何說明文字，不要介紹 JSON 內容。
 - 不要回傳 Markdown 代碼塊（不要 ```json）。
-- START your response directly with `[START_JSON]` followed by the JSON block.
+- 不要添加任何解釋，直接從 `{{` 開始輸出。
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     
@@ -230,9 +192,7 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
         return None
     
     model_name = config.GEMINI_VISION_MODEL
-    # [system_instruction] Pass the main prompt as a clean system instruction
-    # The content only contains the trigger command and the media
-    parts = [{"text": f"請依照系統指示處理此內容。\n待解析內容：\n{text_content}"}]
+    parts = [{"text": final_system_prompt + f"\n\n待解析內容：\n{text_content}"}]
     if image_data_base64:
         parts.append({
             "inline_data": {
@@ -244,9 +204,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
     contents = [{"parts": parts}]
     
     try:
-        # 使用通用函式呼叫 API，傳入獨立的 system_instruction
+        # 使用通用函式呼叫 API
         pure_model_name = model_name.replace("models/", "")
-        text_out = await call_ai_studio(pure_model_name, contents, system_instruction=final_system_prompt)
+        text_out = await call_ai_studio(pure_model_name, contents)
         
         if text_out:
             # [DEBUG] 記錄 AI 原文以便調優
