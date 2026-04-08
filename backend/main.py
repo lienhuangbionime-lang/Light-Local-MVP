@@ -408,30 +408,34 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
   "store_candidates": ["店號1", "店名1", "店號2"...]
 }"""
         
-        extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
+        # 1. Step 1: Raw OCR (deterministic)
+        from backend.services.ai_service import transcribe_image_text
+        ocr_text = await transcribe_image_text(image_b64)
+        print(f"[AI_FILL] OCR Transcription Length: {len(ocr_text) if ocr_text else 0}")
+
+        # 2. Step 2: AI Analysis (grounded by OCR text)
+        extracted = await ask_gemini_secretary(text_content=ocr_text if ocr_text else "[PHOTO]", image_data_base64=image_b64, system_prompt=prompt)
         
-        # 1. Initialize result structure if AI failed to return JSON
+        # 3. Initialize result structure if AI failed
         if not extracted or not isinstance(extracted, dict):
             print(f"[AI_FILL] AI Secretary failed to return JSON, using Empty/OCR Fallback.")
             extracted = {"buyer_name": "", "phone": "", "store_candidates": [], "items": []}
         
-        # 2. Clean phone
+        # 4. Clean phone
         if extracted.get("phone"):
             extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
         
-        # 3. [ROBUST] OCR Two-Step fallback: Runs even if AI JSON failed
-        from backend.services.ai_service import transcribe_image_text
+        # 5. [ROBUST] OCR individual candidate extraction
         from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
         from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
         
-        ocr_text = await transcribe_image_text(image_b64)
         ocr_candidates = []
         if ocr_text:
             ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
             name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
             ocr_candidates = name_matched_ids + ocr_candidates
         
-        # 4. Merge results
+        # 6. Merge results
         ai_candidates = extracted.get("store_candidates", [])
         if extracted.get("shipping_info"): ai_candidates.append(extracted["shipping_info"])
         all_candidates = ocr_candidates + ai_candidates
