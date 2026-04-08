@@ -148,26 +148,24 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
 def clean_json_output(text: str) -> str:
     """
     Strips role-echoing preamble, markdown blocks, and trailing noise from AI output.
-    Attempts to extract the first valid {...} or [...] block.
+    Attempts to extract the largest balanced {...} and [...] blocks.
     """
     if not text:
         return ""
     
-    # [NEW] 1. Try extracting content between strict delimiters first
-    delimiter_match = re.search(r'\[START_JSON\]\s*([\s\S]*?)\s*\[END_JSON\]', text)
-    if delimiter_match:
-        content = delimiter_match.group(1).strip()
-        # Clean up Markdown markers if they survived inside delimiters
-        content = content.replace("```json", "").replace("```", "").strip()
-        return content
+    # [NEW] Robust fallback: Search for any JSON-like structure
+    # This regex looks for anything that starts with { and ends with } (greedy)
+    # or starts with [ and ends with ] (greedy)
+    json_blocks = re.findall(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    if json_blocks:
+        # Sort by length and take the longest one (most likely to be the full data)
+        json_blocks.sort(key=len, reverse=True)
+        cleaned = json_blocks[0]
+        # Final cleanup of markdown clutter inside
+        cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+        return cleaned
 
-    # 2. Look for the FIRST JSON block specifically (avoiding echoing noise at the end)
-    # This non-greedy match captures the first balanceable block
-    match = re.search(r'(\{[\s\S]*?\}|\[[\s\S]*?\])', text)
-    if match:
-        return match.group(0)
-    
-    # 3. Fallback: manual cleanup of common markers
+    # Fallback: manual cleanup of common markers
     cleaned = text.replace("```json", "").replace("```", "").strip()
     return cleaned
 
@@ -207,8 +205,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 
 【負面約束 (絕對禁止)】：
 - 絕對不要複讀你的 Role 或 Task。
+- 絕對不要回傳任何說明文字，不要介紹 JSON 內容。
 - 不要回傳 Markdown 代碼塊（不要 ```json）。
-- 不要添加任何解釋，嚴格遵守 `[START_JSON]` 起始標記。
+- START your response directly with `[START_JSON]` followed by the JSON block.
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     

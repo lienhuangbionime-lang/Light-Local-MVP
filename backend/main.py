@@ -460,6 +460,7 @@ async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "check
 4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
 
 【JSON 格式要求】：
+直接回傳 JSON，禁止任何前導說明：
 {{
   "buyer_name": "買家姓名",
   "phone": "10 碼電話",
