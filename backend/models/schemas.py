@@ -20,6 +20,10 @@ class Order(BaseModel):
     created_at: float = 0.0
     shipping_fee: float = 0.0
     free_shipping_threshold: int = 999
+    
+    # 🤖 AI Async Status
+    ai_status: str = "idle" # idle, processing, done, failed
+    ai_error: Optional[str] = None
 
 class ConfirmOrderRequest(BaseModel):
     shipping_info: str

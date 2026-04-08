@@ -251,6 +251,10 @@ async def update_seller_config(
         config.BUYER_SHIPPING_FEE = int(data["buyer_shipping_fee"])
     if "platform_shipping_fee" in data:
         config.PLATFORM_SHIPPING_FEE = int(data["platform_shipping_fee"])
+    
+    # 🚀 [PERSISTENCE] Ensure changes are saved to cloud config
+    await save_orders(save_config=True, fields=["free_shipping_threshold", "buyer_shipping_fee", "platform_shipping_fee"])
+    
     return {"status": "ok"}
 
 @app.post("/api/seller/sync_stores")
@@ -367,7 +371,9 @@ async def get_checkout(order_id: str, s: Optional[str] = None):
         order_data["config"] = {
             "products": config.ACTIVE_PRODUCTS,
             "free_shipping_threshold": config.FREE_SHIPPING_THRESHOLD,
-            "shipping_fee": config.SHIPPING_FEE
+            "shipping_fee": config.SHIPPING_FEE,
+            "buyer_shipping_fee": config.BUYER_SHIPPING_FEE,
+            "platform_shipping_fee": config.PLATFORM_SHIPPING_FEE
         }
         for item in order_data.get("items", []):
             p_data = config.ACTIVE_PRODUCTS.get(item["product_code"], {})
@@ -376,21 +382,22 @@ async def get_checkout(order_id: str, s: Optional[str] = None):
         return order_data
     raise HTTPException(status_code=404, detail="Order not found")
 
-@app.post("/api/checkout/{order_id}/ai_fill")
-async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = None):
-    """從圖片中辨識收件人資訊 (客戶端專用)"""
-    if not verify_order_signature(order_id, s):
-        print(f"[SECURITY] AI Fill blocked: Invalid Signature (order={order_id})")
-        raise HTTPException(status_code=403, detail="Invalid Signature")
-        
-    from backend.services.ai_service import ask_gemini_secretary
+async def do_ai_fill_task(order_id: str, image_b64: str):
+    """🧠 Background Task for AI Vision processing"""
     try:
-        data_json = await request.json()
-        image_b64 = data_json.get("image")
-        if not image_b64:
-             return {"status": "error", "message": "未接收到圖片資料"}
+        if order_id not in config.ORDER_POOL:
+            await sync_orders_from_cloud()
+        if order_id not in config.ORDER_POOL:
+            return
 
-        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片中【發現】所有可能的收件資訊。
+        order = config.ORDER_POOL[order_id]
+        order.ai_status = "processing"
+        from backend.database.firebase import save_orders
+        await save_orders(order_id=order_id, fields=["ai_status"])
+
+        prompt = f"""你現在是【Role: EchoOrder Checkout Helper】。
+你的任務是從買家提供的「截圖」中，精確提取收件資訊。
+
 請【嚴格】回傳以下 JSON 格式。
 
 【規則 (最高優先級)】：
@@ -402,24 +409,20 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
 4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
 
 【JSON 格式要求】：
-{
+{{
   "buyer_name": "買家姓名",
   "phone": "10 碼電話",
   "store_candidates": ["店號1", "店名1", "店號2"...]
-}"""
+}}"""
         
         extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
         
-        # 1. Initialize result structure if AI failed to return JSON
         if not extracted or not isinstance(extracted, dict):
-            print(f"[AI_FILL] AI Secretary failed to return JSON, using Empty/OCR Fallback.")
             extracted = {"buyer_name": "", "phone": "", "store_candidates": [], "items": []}
         
-        # 2. Clean phone
         if extracted.get("phone"):
             extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
         
-        # 3. [ROBUST] OCR Two-Step fallback: Runs even if AI JSON failed
         from backend.services.ai_service import transcribe_image_text
         from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
         from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
@@ -431,42 +434,78 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
             name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
             ocr_candidates = name_matched_ids + ocr_candidates
         
-        # 4. Merge results
         ai_candidates = extracted.get("store_candidates", [])
-        if extracted.get("shipping_info"): ai_candidates.append(extracted["shipping_info"])
         all_candidates = ocr_candidates + ai_candidates
         
         verified_store = await resolve_store_info("", candidates=all_candidates)
         extracted["shipping_info"] = verified_store
         
-        # 5. Persist to Firebase
-        if order_id in config.ORDER_POOL:
-             order = config.ORDER_POOL[order_id]
-             has_update = False
-             if extracted.get("buyer_name") and not order.buyer_name:
-                 order.buyer_name = extracted["buyer_name"]; has_update = True
-             if extracted.get("phone") and not order.phone:
-                 order.phone = extracted["phone"]; has_update = True
-             if extracted.get("shipping_info") and not order.shipping_info:
-                 order.shipping_info = extracted["shipping_info"]; has_update = True
-             
-             if has_update:
-                 order.status = "PENDING"
-                 from backend.database.firebase import save_orders
-                 await save_orders(order_id=order_id)
-
-        # Return success if we have at least one valid field
-        if any([extracted.get("buyer_name"), extracted.get("phone"), extracted.get("shipping_info")]):
-            print(f"[AI_FILL] Final Result: {extracted}")
-            from backend.database.firebase import save_events
-            await save_events()
-            return {"status": "success", "data": extracted}
+        # Apply to order
+        has_update = False
+        if extracted.get("buyer_name") and not order.buyer_name:
+            order.buyer_name = extracted["buyer_name"]; has_update = True
+        if extracted.get("phone") and not order.phone:
+            order.phone = extracted["phone"]; has_update = True
+        if extracted.get("shipping_info") and not order.shipping_info:
+            order.shipping_info = extracted["shipping_info"]; has_update = True
         
-        print(f"[AI_FILL] All recognition methods failed for image.")
-        return {"status": "error", "message": "AI 無法從此圖片辨識到有效的姓名、電話或門市。"}
+        order.ai_status = "done"
+        order.ai_error = None
+        await save_orders(order_id=order_id)
+        print(f"[AI_FILL] Order {order_id} processed successfully.")
+
     except Exception as e:
-        print(f"[AI_FILL] 處理崩潰: {e}")
-        return {"status": "error", "message": f"伺服器處理異常: {str(e)}"}
+        print(f"[AI_FILL] Background task failed: {e}")
+        if order_id in config.ORDER_POOL:
+            config.ORDER_POOL[order_id].ai_status = "failed"
+            config.ORDER_POOL[order_id].ai_error = str(e)
+            from backend.database.firebase import save_orders
+            await save_orders(order_id=order_id, fields=["ai_status", "ai_error"])
+
+@app.post("/api/checkout/{order_id}/ai_fill")
+async def ai_fill_order(order_id: str, data: Dict, background_tasks: BackgroundTasks, s: Optional[str] = None):
+    if not verify_order_signature(order_id, s):
+        raise HTTPException(status_code=403, detail="Invalid Signature")
+    
+    image_b64 = data.get("image")
+    if not image_b64:
+        return {"status": "error", "message": "Missing image data"}
+
+    if order_id not in config.ORDER_POOL:
+        await sync_orders_from_cloud()
+    
+    if order_id in config.ORDER_POOL:
+        order = config.ORDER_POOL[order_id]
+        if order.ai_status == "processing":
+            return {"status": "processing", "message": "Already processing"}
+        
+        order.ai_status = "processing"
+        background_tasks.add_task(do_ai_fill_task, order_id, image_b64)
+        return {"status": "processing", "message": "Job started in background"}
+
+    return {"status": "error", "message": "Order not found"}
+
+@app.get("/api/checkout/{order_id}/status")
+async def get_order_ai_status(order_id: str, s: Optional[str] = None):
+    if not verify_order_signature(order_id, s):
+        raise HTTPException(status_code=403, detail="Invalid Signature")
+    
+    if order_id not in config.ORDER_POOL:
+        await sync_orders_from_cloud()
+        
+    if order_id in config.ORDER_POOL:
+        order = config.ORDER_POOL[order_id]
+        return {
+            "order_id": order_id,
+            "ai_status": order.ai_status,
+            "ai_error": order.ai_error,
+            "data": {
+                "buyer_name": order.buyer_name,
+                "phone": order.phone,
+                "shipping_info": order.shipping_info
+            }
+        }
+    raise HTTPException(status_code=404, detail="Order not found")
 
 @app.post("/api/checkout/{order_id}/confirm")
 async def confirm_checkout(order_id: str, data: Dict, s: Optional[str] = None):

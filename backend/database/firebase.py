@@ -137,6 +137,8 @@ async def sync_state_from_cloud(sync_orders: bool = False, force: bool = False):
             config.CURRENT_PAGE_ID = data.get("fb_page_id", config.CURRENT_PAGE_ID)
             config.FREE_SHIPPING_THRESHOLD = data.get("free_shipping_threshold", config.FREE_SHIPPING_THRESHOLD)
             config.SHIPPING_FEE = data.get("shipping_fee", 38)
+            config.BUYER_SHIPPING_FEE = data.get("buyer_shipping_fee", config.BUYER_SHIPPING_FEE)
+            config.PLATFORM_SHIPPING_FEE = data.get("platform_shipping_fee", config.PLATFORM_SHIPPING_FEE)
             config.GEMINI_EMBEDDING_MODEL = data.get("gemini_embedding_model", config.GEMINI_EMBEDDING_MODEL)
             config.GEMINI_VISION_MODEL = data.get("gemini_vision_model", config.GEMINI_VISION_MODEL)
             config.PROCESSED_COMMENT_IDS.update(data.get("processed_comment_ids", []))
@@ -193,7 +195,9 @@ async def save_orders(save_config: bool = False, fields: Optional[List[str]] = N
                     "session_start_time": config.SESSION_START_TIME,
                     "fb_page_id": config.CURRENT_PAGE_ID,
                     "free_shipping_threshold": config.FREE_SHIPPING_THRESHOLD,
-                    "shipping_fee": config.SHIPPING_FEE
+                    "shipping_fee": config.SHIPPING_FEE,
+                    "buyer_shipping_fee": config.BUYER_SHIPPING_FEE,
+                    "platform_shipping_fee": config.PLATFORM_SHIPPING_FEE
                 }
                 if fields:
                     payload = {k: v for k, v in payload.items() if k in fields}
@@ -226,6 +230,9 @@ async def load_orders():
             config.IS_LIVE_ACTIVE = data.get("is_live_active", False)
             config.SESSION_START_TIME = data.get("session_start_time", 0.0)
             config.CURRENT_PAGE_ID = data.get("fb_page_id", "")
+            config.FREE_SHIPPING_THRESHOLD = data.get("free_shipping_threshold", config.FREE_SHIPPING_THRESHOLD)
+            config.BUYER_SHIPPING_FEE = data.get("buyer_shipping_fee", config.BUYER_SHIPPING_FEE)
+            config.PLATFORM_SHIPPING_FEE = data.get("platform_shipping_fee", config.PLATFORM_SHIPPING_FEE)
         
         for doc in (list(docs) + list(arch_docs)):
             config.ORDER_POOL[doc.id] = Order(**doc.to_dict())

@@ -61,7 +61,14 @@ async def transcribe_image_text(image_data_base64: str, mime_type: str = "image/
     if not config.GEMINI_API_KEY or not image_data_base64:
         return None
     
-    ocr_prompt = "請把這張圖片中所有可見的文字，一字不漏地轉錄為純文字。不要翻譯、不要解釋、不要加任何說明，只輸出原始文字內容。"
+    ocr_prompt = """
+請把這張圖片中所有可見的文字，一字不漏地轉錄為純文字。
+【轉錄規範】：
+1. 嚴禁翻譯、嚴禁解釋、嚴禁加任何 Role/Task 說明。
+2. 僅輸出原始文字內容。
+3. 若圖中有手寫文字，請盡力辨識並轉錄。
+請將轉錄結果包裹在 `[START_OCR]` 與 `[END_OCR]` 標記之間。
+"""
     
     parts = [
         {"text": ocr_prompt},
@@ -70,6 +77,13 @@ async def transcribe_image_text(image_data_base64: str, mime_type: str = "image/
     
     pure_model = config.GEMINI_VISION_MODEL.replace("models/", "")
     raw_text = await call_ai_studio(pure_model, [{"parts": parts}])
+    
+    # [NEW] Clean OCR output using delimiters
+    if raw_text:
+        ocr_match = re.search(r'\[START_OCR\]\s*([\s\S]*?)\s*\[END_OCR\]', raw_text)
+        if ocr_match:
+            raw_text = ocr_match.group(1).strip()
+            
     print(f"[OCR] 轉錄完成，共 {len(raw_text) if raw_text else 0} 字元")
     return raw_text
 
@@ -139,13 +153,21 @@ def clean_json_output(text: str) -> str:
     if not text:
         return ""
     
-    # 1. Look for JSON blocks specifically
-    # Use non-greedy match for the content between braces or brackets
-    match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    # [NEW] 1. Try extracting content between strict delimiters first
+    delimiter_match = re.search(r'\[START_JSON\]\s*([\s\S]*?)\s*\[END_JSON\]', text)
+    if delimiter_match:
+        content = delimiter_match.group(1).strip()
+        # Clean up Markdown markers if they survived inside delimiters
+        content = content.replace("```json", "").replace("```", "").strip()
+        return content
+
+    # 2. Look for the FIRST JSON block specifically (avoiding echoing noise at the end)
+    # This non-greedy match captures the first balanceable block
+    match = re.search(r'(\{[\s\S]*?\}|\[[\s\S]*?\])', text)
     if match:
         return match.group(0)
     
-    # 2. Fallback: manual cleanup of common markers
+    # 3. Fallback: manual cleanup of common markers
     cleaned = text.replace("```json", "").replace("```", "").strip()
     return cleaned
 
@@ -167,8 +189,10 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 - **店號優先**：如果看到 6 位數字（店號），優先放入 `store_candidates`。
 
 【JSON 格式要求】：
+請將結果包裹在 `[START_JSON]` 與 `[END_JSON]` 標記之間。
 回傳必須僅包含 JSON 內容，禁止任何 Role/Task 說明、禁止前導文字。
 格式範本：
+[START_JSON]
 {{
   "buyer_name": "姓名",
   "phone": "電話",
@@ -176,6 +200,7 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
   "items": [{{ "product_code": "代號", "quantity": 數量 }}],
   "shipping_info": "對話頁面或貼紙上的完整地址（原文照抄）"
 }}
+[END_JSON]
 
 【當前商品代號表 (參考用)】：
 {json.dumps(ACTIVE_PRODUCTS, ensure_ascii=False)}
@@ -183,7 +208,7 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
 【負面約束 (絕對禁止)】：
 - 絕對不要複讀你的 Role 或 Task。
 - 不要回傳 Markdown 代碼塊（不要 ```json）。
-- 不要添加任何解釋，直接從 `{{` 開始輸出。
+- 不要添加任何解釋，嚴格遵守 `[START_JSON]` 起始標記。
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     

@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 import { ShoppingCart, MapPin, Phone, CheckCircle2, AlertCircle, Loader2, ArrowLeft, Camera, ImagePlus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useAIPolling } from "@/hooks/use-ai-polling"
 
 export default function CheckoutPage() {
   const params = useParams()
@@ -25,7 +26,25 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
-  const [isParsing, setIsParsing] = useState(false)
+  
+  // 3. AI Polling Hook
+  const { isProcessing: isAIProcessing, startPolling } = useAIPolling({
+    orderId,
+    backendUrl,
+    signature: searchParams.get("s"),
+    onSuccess: (data) => {
+      setFormData(prev => ({
+        ...prev,
+        buyer_name: data.buyer_name || prev.buyer_name,
+        phone: data.phone || prev.phone,
+        shipping_info: data.shipping_info || prev.shipping_info
+      }))
+      toast({ title: "AI 解析成功！", description: "已自動填入收件資訊" })
+    },
+    onError: (msg) => {
+      toast({ title: "解析失敗", description: msg, variant: "destructive" })
+    }
+  })
 
   // 表單資料
   const [formData, setFormData] = useState({
@@ -110,6 +129,13 @@ export default function CheckoutPage() {
     fetchOrder()
   }, [orderId, backendUrl])
 
+  // 1.1 自動檢查 AI 是否還在處理 (處理切換頁面回來的情況)
+  useEffect(() => {
+    if (order?.ai_status === "processing") {
+      startPolling()
+    }
+  }, [order?.ai_status])
+
   // 2. 提交確認
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -156,7 +182,6 @@ export default function CheckoutPage() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setIsParsing(true)
     try {
       // 1. Convert to base64
       const reader = new FileReader()
@@ -178,22 +203,14 @@ export default function CheckoutPage() {
       })
       
       const result = await res.json()
-      if (result.status === "success" && result.data) {
-        const { buyer_name, phone, shipping_info } = result.data
-        setFormData(prev => ({
-          ...prev,
-          buyer_name: buyer_name || prev.buyer_name,
-          phone: phone || prev.phone,
-          shipping_info: shipping_info || prev.shipping_info
-        }))
-        toast({ title: "AI 解析成功！", description: "已自動填入收件資訊" })
+      if (result.status === "processing") {
+        startPolling()
+        toast({ title: "正在由 AI 辨識...", description: "您可以切換畫面，系統會在後台處理" })
       } else {
         throw new Error(result.message || "解析失敗")
       }
     } catch (err: any) {
-      toast({ title: "解析異常", description: err.message, variant: "destructive" })
-    } finally {
-      setIsParsing(false)
+      toast({ title: "解析發送失敗", description: err.message, variant: "destructive" })
     }
     // 清空 input 以便下次選擇同一張圖
     e.target.value = ""
@@ -388,22 +405,25 @@ export default function CheckoutPage() {
                   className="hidden" 
                   id="ai-image-upload" 
                   onChange={handleAIPhotoFill}
-                  disabled={isParsing}
+                  disabled={isAIProcessing}
                 />
                 <Button 
                   type="button"
                   variant="outline" 
                   size="sm" 
-                  className="bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary font-bold transition-all px-3"
+                  className={cn(
+                    "bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary font-bold transition-all px-3",
+                    isAIProcessing && "animate-pulse"
+                  )}
                   onClick={() => document.getElementById('ai-image-upload')?.click()}
-                  disabled={isParsing}
+                  disabled={isAIProcessing}
                 >
-                  {isParsing ? (
+                  {isAIProcessing ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
                   ) : (
                     <Camera className="h-3.5 w-3.5 mr-1" />
                   )}
-                  📸 AI 拍照填單
+                  📸 AI {isAIProcessing ? "辨識中..." : "拍照填單"}
                 </Button>
               </div>
             </CardTitle>
