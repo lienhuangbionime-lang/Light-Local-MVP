@@ -36,15 +36,23 @@ async def get_gemini_embedding(text: str) -> Optional[List[float]]:
         print(f"[AI] Embedding 呼叫異常: {e}")
     return None
 
-async def call_ai_studio(model_name: str, contents: List[Dict]) -> Optional[str]:
-    """通用 Google AI Studio API 呼叫函式"""
+async def call_ai_studio(model_name: str, contents: List[Dict], system_instruction: Optional[str] = None) -> Optional[str]:
+    """通用 Google AI Studio API 呼叫函式
+    支援 system_instruction 以防止模型鏡像 (Mirroring) 系統指令
+    """
     if not config.GEMINI_API_KEY:
         return None
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={config.GEMINI_API_KEY}"
     
+    payload: Dict[str, Any] = {"contents": contents}
+    if system_instruction:
+        payload["system_instruction"] = {
+            "parts": [{"text": system_instruction}]
+        }
+    
     try:
-        res = await global_client.post(url, json={"contents": contents}, timeout=60.0)
+        res = await global_client.post(url, json=payload, timeout=60.0)
         if res.status_code == 200:
             raw_res = res.json()
             return raw_res.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
@@ -120,8 +128,8 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
   "recommended_action": "給工作人員的建議步驟"
 }}
 """
-    contents = [{"parts": [{"text": system_prompt + f"\n\n買家留言：\n{text_content}"}]}]
-    text_out = await call_ai_studio(config.GEMINI_VISION_MODEL, contents) # 使用全域設定之模型
+    contents = [{"parts": [{"text": f"買家留言：\n{text_content}"}]}]
+    text_out = await call_ai_studio(config.GEMINI_VISION_MODEL, contents, system_instruction=system_prompt) 
     
     if text_out:
         json_match = re.search(r'\{.*\}', text_out, re.DOTALL)
@@ -192,7 +200,8 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
         return None
     
     model_name = config.GEMINI_VISION_MODEL
-    parts = [{"text": final_system_prompt + f"\n\n待解析內容：\n{text_content}"}]
+    
+    parts = [{"text": f"待解析內容：\n{text_content}"}]
     if image_data_base64:
         parts.append({
             "inline_data": {
@@ -204,9 +213,9 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
     contents = [{"parts": parts}]
     
     try:
-        # 使用通用函式呼叫 API
+        # 使用通用函式呼叫 API (帶入 system_instruction)
         pure_model_name = model_name.replace("models/", "")
-        text_out = await call_ai_studio(pure_model_name, contents)
+        text_out = await call_ai_studio(pure_model_name, contents, system_instruction=final_system_prompt)
         
         if text_out:
             # [DEBUG] 記錄 AI 原文以便調優

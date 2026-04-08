@@ -35,9 +35,11 @@ export async function POST(req: NextRequest) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+                system_instruction: {
+                    parts: [{ text: ocrPrompt }]
+                },
                 contents: [{
                     parts: [
-                        { text: ocrPrompt },
                         { inline_data: { mime_type: mimeType, data: cleanedBase64 } }
                     ]
                 }]
@@ -58,28 +60,26 @@ export async function POST(req: NextRequest) {
         }
 
         // --- STEP 2: STRUCTURED PARSING FROM TEXT ---
-        const parsePrompt = `
-你是一位專業的「進貨單據解析小幫手」。請從下方的【OCR 轉錄文字】中，萃取出品項清單。
+        const systemParsePrompt = `你是一位專業的「進貨單據解析小幫手」。請從下方的【OCR 轉錄文字】中，萃取出品項清單。
 請【嚴格】回傳一個 JSON 陣列，每個物件包含：
 - "name": (string) 產品品名
 - "foreignPrice": (number) 外幣單價 (VND)
 - "quantity": (number) 數量
 
-【OCR 轉錄文字】：
-${rawOcrText}
-
 【規則】：
 1. 僅回傳 JSON 陣列，禁止任何前導、後導文字。
 2. 不要包含 Markdown 格式 (不要 \`\`\`json)。
-3. 若數字中含有逗號 (如 150,000)，請移除逗號轉為數字 (150000)。
-`
+3. 若數字中含有逗號 (如 150,000)，請移除逗號轉為數字 (150000)。`
 
         const parseResponse = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+                system_instruction: {
+                    parts: [{ text: systemParsePrompt }]
+                },
                 contents: [{
-                    parts: [{ text: parsePrompt }]
+                    parts: [{ text: `【OCR 轉錄文字】：\n${rawOcrText}` }]
                 }]
             })
         })
