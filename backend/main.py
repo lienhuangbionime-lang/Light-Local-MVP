@@ -1,16 +1,14 @@
 import sys
 import os
 
-# [CRITICAL FIX] Render/Cloud Path Logic
-# Always ensure the project root is in sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+# [ULTRA-STABLE] Force absolute path resolution
+# This ensures that even when Gunicorn starts from a sub-directory, 
+# the project root is always identified and added to sys.path.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-print(f"[SYSTEM] Path Fix: current={current_dir}, parent={parent_dir}")
+print(f"📡 [SYSTEM] Project Root: {PROJECT_ROOT} | ENV_PORT: {os.environ.get('PORT')}")
 
 from fastapi import FastAPI, UploadFile, File, Form, Header, BackgroundTasks, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,16 +51,17 @@ async def lifespan(app: FastAPI):
     async def fast_startup_task():
         """背景加載耗時資源，不阻塞健康檢查"""
         try:
-            print("[INIT] 背景載入數據中...")
+            print(f"🧠 [INIT] 背景載入數據中... (PID: {os.getpid()})")
             await load_orders()
             await load_events()
             
             from backend.services.store_service import _load_stores_into_memory
+            print("📦 [INIT] 開始載入 6 萬筆門市大資料...")
             _load_stores_into_memory()
 
             if config.PAGE_ACCESS_TOKEN:
                 await subscribe_page_to_app(config.PAGE_ACCESS_TOKEN)
-            print("✅ [INIT] 背景載入完成")
+            print("✅ [INIT] 數據背景載入與初始化成功")
         except Exception as e:
             print(f"❌ [INIT] 背景載入失敗: {e}")
 
