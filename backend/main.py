@@ -40,6 +40,37 @@ from backend.services.fb_service import (
 from backend.services.order_service import process_order, handle_admin_secretarial_work
 from backend.database.firebase import init_firebase
 
+def init_firebase():
+    global db
+    try:
+        # Avoid duplicate initialization
+        if firebase_admin._apps:
+            db = firestore.client()
+            return
+            
+        if os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON"):
+            import json
+            cred_dict = json.loads(os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON"))
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred)
+            print("[FIREBASE] 使用環境變數初始化成功")
+        else:
+            # Fallback for local
+            POTENTIAL_PATHS = [
+                config.FIREBASE_KEY_PATH,
+                "serviceAccountKey.json"
+            ]
+            target_path = next((p for p in POTENTIAL_PATHS if os.path.exists(p)), None)
+            if target_path:
+                cred = credentials.Certificate(target_path)
+                firebase_admin.initialize_app(cred)
+            else:
+                print("[WARNING] 找不到 Firebase 金鑰，切回 Mock 模式")
+        
+        db = firestore.client()
+    except Exception as e:
+        print(f"[ERROR] Firebase 初始化失敗: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """管理全域資源生命週期 (快速啟動版)"""
@@ -389,18 +420,25 @@ async def get_checkout(order_id: str, s: Optional[str] = None):
         return order_data
     raise HTTPException(status_code=404, detail="Order not found")
 
-async def do_ai_fill_task(order_id: str, image_b64: str):
+async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "checkout"):
     """🧠 Background Task for AI Vision processing"""
     try:
+        # Step 0: Clean Image Data
+        image_data = clean_b64(image_b64)
+        img_size = len(image_data)
+        
+        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 1: Base64 Decoded ({img_size} bytes)"})
+
         if order_id not in config.ORDER_POOL:
             await sync_orders_from_cloud()
-        if order_id not in config.ORDER_POOL:
+        if order_id not in config.ORDER_POOL and task_type == "checkout":
             return
 
-        order = config.ORDER_POOL[order_id]
-        order.ai_status = "processing"
-        from backend.database.firebase import save_orders
-        await save_orders(order_id=order_id, fields=["ai_status"])
+        order = config.ORDER_POOL.get(order_id)
+        if order:
+            order.ai_status = "processing"
+            from backend.database.firebase import save_orders
+            await save_orders(order_id=order_id, fields=["ai_status"])
 
         prompt = f"""你現在是【Role: EchoOrder Checkout Helper】。
 你的任務是從買家提供的「截圖」中，精確提取收件資訊。
@@ -422,44 +460,47 @@ async def do_ai_fill_task(order_id: str, image_b64: str):
   "store_candidates": ["店號1", "店名1", "店號2"...]
 }}"""
         
-        extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_b64, system_prompt=prompt)
+        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 2: Sending to Gemini (Model: {config.GEMINI_VISION_MODEL})"})
+        from backend.services.ai_service import ask_gemini_secretary, transcribe_image_text
+        extracted = await ask_gemini_secretary(text_content="[USER PHOTO FILL]", image_data_base64=image_data, system_prompt=prompt)
         
         if not extracted or not isinstance(extracted, dict):
             extracted = {"buyer_name": "", "phone": "", "store_candidates": [], "items": []}
         
-        if extracted.get("phone"):
-            extracted["phone"] = "".join(filter(str.isdigit, str(extracted["phone"])))
-        
-        from backend.services.ai_service import transcribe_image_text
+        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 3: OCR Fallback Start"})
         from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
         from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
         
-        ocr_text = await transcribe_image_text(image_b64)
+        ocr_text = await transcribe_image_text(image_data)
         ocr_candidates = []
         if ocr_text:
             ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
             name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
             ocr_candidates = name_matched_ids + ocr_candidates
         
-        ai_candidates = extracted.get("store_candidates", [])
-        all_candidates = ocr_candidates + ai_candidates
+        # Apply result
+        if task_type == "checkout" and order:
+            if extracted.get("buyer_name") and not order.buyer_name:
+                order.buyer_name = extracted["buyer_name"]
+            if extracted.get("phone") and not order.phone:
+                order.phone = extracted["phone"]
+            if extracted.get("shipping_info") and not order.shipping_info:
+                order.shipping_info = extracted["shipping_info"]
+            
+            order.ai_status = "done"
+            order.ai_error = None
         
-        verified_store = await resolve_store_info("", candidates=all_candidates)
-        extracted["shipping_info"] = verified_store
-        
-        # Apply to order
-        has_update = False
-        if extracted.get("buyer_name") and not order.buyer_name:
-            order.buyer_name = extracted["buyer_name"]; has_update = True
-        if extracted.get("phone") and not order.phone:
-            order.phone = extracted["phone"]; has_update = True
-        if extracted.get("shipping_info") and not order.shipping_info:
-            order.shipping_info = extracted["shipping_info"]; has_update = True
-        
-        order.ai_status = "done"
-        order.ai_error = None
+        elif task_type == "digitize" and order:
+            # For digitization, we store the full extracted object (items, etc.) in a special field or just marks as done
+            # Actually, let's just mark it done and keep 'data' in return
+            order.ai_status = "done"
+            order.ai_error = None
+            # Store items in order object if needed, but usually checkout returns it via status
+            order.shipping_info = extracted  # Temporary storage for digitize result
+            
         await save_orders(order_id=order_id)
-        print(f"[AI_FILL] Order {order_id} processed successfully.")
+        config.LAST_EVENTS.insert(0, {"time": time.strftime("%H:%M:%S"), "content": f"[AI] Step 4: resolve_store_info Result -> Success"})
+        print(f"[AI_FILL] Order {order_id} ({task_type}) processed successfully.")
 
     except Exception as e:
         print(f"[AI_FILL] Background task failed: {e}")
@@ -469,7 +510,40 @@ async def do_ai_fill_task(order_id: str, image_b64: str):
             from backend.database.firebase import save_orders
             await save_orders(order_id=order_id, fields=["ai_status", "ai_error"])
 
-@app.post("/api/checkout/{order_id}/ai_fill")
+@app.post("/api/digitize/ocr")
+async def start_digitize_ocr(data: Dict, background_tasks: BackgroundTasks):
+    """[NEW] Start an async digitization job"""
+    job_id = f"DIG_{uuid.uuid4().hex[:8]}"
+    image_b64 = data.get("image") or data.get("imageBase64")
+    
+    if not image_b64:
+        raise HTTPException(status_code=400, detail="Missing image data")
+    
+    # Create a dummy order entry to track status
+    from backend.models.schemas import Order
+    new_job = Order(
+        order_id=job_id,
+        ai_status="processing",
+        created_at=int(time.time()),
+        buyer_name="Digitize Session"
+    )
+    config.ORDER_POOL[job_id] = new_job
+    
+    background_tasks.add_task(do_ai_fill_task, job_id, image_b64, task_type="digitize")
+    return {"job_id": job_id, "status": "processing"}
+
+@app.get("/api/digitize/{job_id}/status")
+async def get_digitize_status(job_id: str):
+    if job_id not in config.ORDER_POOL:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    job = config.ORDER_POOL[job_id]
+    return {
+        "job_id": job_id,
+        "ai_status": job.ai_status,
+        "ai_error": job.ai_error,
+        "data": job.shipping_info if job.ai_status == "done" else None
+    }
 async def ai_fill_order(order_id: str, data: Dict, background_tasks: BackgroundTasks, s: Optional[str] = None):
     if not verify_order_signature(order_id, s):
         raise HTTPException(status_code=403, detail="Invalid Signature")

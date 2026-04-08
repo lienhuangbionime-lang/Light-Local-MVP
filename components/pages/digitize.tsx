@@ -48,34 +48,52 @@ export function DigitizePage() {
     setIsUploading(true)
 
     try {
-      // 1. Convert to Base64 using a Promise so we can await it
+      const reader = new FileReader()
       const base64String = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
         reader.readAsDataURL(file)
-        reader.onload = () => resolve((reader.result as string).split(",")[1])
+        reader.onload = () => resolve(reader.result as string)
         reader.onerror = () => reject(new Error("Failed to read file"))
       })
 
-      // 2. Call OCR Endpoint
-      const response = await fetch("/api/ocr", {
+      // 1. Detect Backend URL (preferring cloud if on Vercel)
+      const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+      const searchParams = new URLSearchParams(window.location.search);
+      const cloudBackend = searchParams.get('backend') || (isVercel ? "https://light-local-mvp.onrender.com" : "");
+      
+      const apiBase = cloudBackend || "";
+      
+      // 2. Start Async OCR Job
+      const startRes = await fetch(`${apiBase}/api/digitize/ocr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64: base64String,
-          mimeType: file.type || "image/jpeg",
-          apiKey: geminiApiKey
-        })
+        body: JSON.stringify({ image: base64String })
       })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || t("digitize.error_api"))
+      if (!startRes.ok) throw new Error("無法啟動辨識任務")
+      const { job_id } = await startRes.json()
+
+      // 3. Poll for result
+      let attempts = 0
+      const maxAttempts = 30 // 60 seconds total
+      
+      const poll = async (): Promise<any> => {
+        if (attempts >= maxAttempts) throw new Error("辨識逾時，請重試")
+        attempts++
+        
+        const statusRes = await fetch(`${apiBase}/api/digitize/${job_id}/status`)
+        const statusData = await statusRes.json()
+        
+        if (statusData.ai_status === "done") return statusData.data
+        if (statusData.ai_status === "failed") throw new Error(statusData.ai_error || "辨識失敗")
+        
+        await new Promise(r => setTimeout(r, 2000))
+        return poll()
       }
 
-      const data = await response.json()
+      const extracted = await poll()
 
-      if (data.items && Array.isArray(data.items)) {
-        const mappedItems = data.items.map((item: any) => ({
+      if (extracted && extracted.items) {
+        const mappedItems = extracted.items.map((item: any) => ({
           id: crypto.randomUUID(),
           name: item.name || t("digitize.unnamed_product"),
           foreignPrice: item.foreignPrice || 0,
@@ -91,8 +109,6 @@ export function DigitizePage() {
           title: t("digitize.toast_success_title"),
           description: t("digitize.toast_success_desc").replace("{count}", mappedItems.length.toString()),
         })
-      } else {
-        throw new Error("Invalid format from OCR")
       }
     } catch (error: any) {
       console.error(error)
