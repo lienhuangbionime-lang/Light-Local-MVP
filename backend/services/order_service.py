@@ -354,7 +354,8 @@ async def handle_admin_secretarial_work(webhook_data: dict, background_tasks: Ba
         
         # 準備結帳連結
         signature = generate_order_signature(order_id)
-        checkout_url = f"https://light-local-mvp.vercel.app/checkout/{order_id}?s={signature}"
+        # Using dynamic URLs from config
+        checkout_url = f"{config.FRONTEND_URL}/checkout/{order_id}?s={signature}&backend={config.BASE_URL}"
         
         if target_psid:
             # 1. 傳送回饋給管理員 (告知解析成功)

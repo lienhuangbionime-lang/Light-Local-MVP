@@ -55,12 +55,13 @@ export function DigitizePage() {
         reader.onerror = () => reject(new Error("Failed to read file"))
       })
 
-      // 1. Detect Backend URL (preferring cloud if on Vercel)
+      // 1. Detect Backend URL (smarter fallback)
       const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-      const searchParams = new URLSearchParams(window.location.search);
-      const cloudBackend = searchParams.get('backend') || (isVercel ? "https://light-local-mvp.onrender.com" : "");
+      const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+      const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : "");
       
-      const apiBase = cloudBackend || "";
+      const apiBase = searchParams.get('backend') || searchParams.get('b') || 
+                      (isLocalhost ? "http://localhost:8000" : (isVercel ? "https://light-local-mvp.onrender.com" : ""));
       
       // 2. Start Async OCR Job
       const startRes = await fetch(`${apiBase}/api/digitize/ocr`, {

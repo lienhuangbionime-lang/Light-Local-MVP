@@ -13,6 +13,12 @@ PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN", "")
 GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-2-preview"
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "models/gemma-4-31b-it")
 
+# [NETWORK] URL Configuration
+# BASE_URL is the backend API URL
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+# FRONTEND_URL is the checkout page base
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://light-local-mvp.vercel.app").rstrip("/")
+
 # [SYSTEM] Identifiers
 INSTANCE_ID = "".join(random.choices("0123456789abcdef", k=8))
 CURRENT_PAGE_ID = ""

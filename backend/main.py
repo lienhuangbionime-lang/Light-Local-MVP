@@ -446,7 +446,32 @@ async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "check
             from backend.database.firebase import save_orders
             await save_orders(order_id=order_id, fields=["ai_status"])
 
-        prompt = f"""你現在是【Role: EchoOrder Checkout Helper】。
+        # --- Prompt Selection ---
+        if task_type == "digitize":
+            # [DIGITIZE PROMPT] Focus on product items
+            prompt = """你現在是【Role: EchoOrder Digitize Specialist】。
+你的任務是從這張「發票 (Invoice)」或「收據 (Receipt)」截圖中，精確提取商品清單。
+
+請【嚴格】回傳以下 JSON 格式。
+
+【規則】：
+1. **品項提取 (items)**：識別每一個商品，包含：
+   - `name`: 商品名稱 (原文，盡量包含特徵如顏色/尺寸)
+   - `foreignPrice`: 外幣單價 (純數字)
+   - `quantity`: 數量 (純數字)
+2. **越南文支援**：如果收據是越南文，請翻譯成中文或保持原文。
+
+【JSON 格式要求】：
+直接回傳 JSON，禁止任何前導說明：
+{
+  "items": [
+    { "name": "商品1", "foreignPrice": 100, "quantity": 1 },
+    ...
+  ]
+}"""
+        else:
+            # [CHECKOUT PROMPT] Focus on buyer contact info
+            prompt = f"""你現在是【Role: EchoOrder Checkout Helper】。
 你的任務是從買家提供的「截圖」中，精確提取收件資訊。
 
 請【嚴格】回傳以下 JSON 格式。
@@ -457,7 +482,7 @@ async def do_ai_fill_task(order_id: str, image_b64: str, task_type: str = "check
    - 看到年份數字 (如 113, 2024, 2025)：**禁止放入 candidates**。
    - 看到發票號碼 (含英文或 8 位以上純數字)：**禁止放入 candidates**。
 3. **店名提取**：請提取如「旗山旗力」、「港富」等獨特名字。
-4. **買家姓名**：優先抓取對話視窗最頂部顯示的對象名稱。
+4. **買家姓名**：優先抓取對話視窗最頂部顯示的對对象名稱。
 
 【JSON 格式要求】：
 直接回傳 JSON，禁止任何前導說明：
