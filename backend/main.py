@@ -44,27 +44,35 @@ from backend.database.firebase import init_firebase
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """管理全域資源生命週期"""
-    print(f"[SYSTEM] 啟動背景同步任務... (Instance: {INSTANCE_ID})")
+    """管理全域資源生命週期 (雲端加強版)"""
+    print(f"🚀 [INIT] 啟動伺服器初始化... (Instance: {INSTANCE_ID})")
+    
     try:
+        # 1. Firebase 初始化
         init_firebase()
-        # [CRITICAL] Background the loading to pass Render health checks FAST
-        async def loader():
-            try:
-                await asyncio.gather(load_orders(), load_events())
-                if config.PAGE_ACCESS_TOKEN and not config.CURRENT_PAGE_ID:
-                    from backend.services.fb_service import subscribe_page_to_app
-                    await asyncio.wait_for(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN), timeout=15.0)
-                print("[SYSTEM] 數據載入與 FB 訂閱完成")
-            except Exception as le:
-                print(f"[ERROR] 背景加載失敗: {le}")
         
-        asyncio.create_task(loader())
-        print("[SYSTEM] 異步初始化啟動")
+        # 2. 關鍵數據載入 (改為阻塞式確保啟動前準備完成)
+        print("[INIT] 載入訂單與事件數據...")
+        await load_orders()
+        await load_events()
+        
+        # 3. 門市資料熱載入 (確保 store_service 已備妥)
+        from backend.services.store_service import _load_stores_into_memory
+        _load_stores_into_memory()
+
+        # 4. FB 訂閱 (僅在有 Token 時執行，不佔用啟動時間)
+        if config.PAGE_ACCESS_TOKEN:
+            asyncio.create_task(subscribe_page_to_app(config.PAGE_ACCESS_TOKEN))
+            
+        print("✅ [INIT] 伺服器初始化成功")
     except Exception as e:
-        print(f"[ERROR] 初始化啟動失敗: {e}")
+        print(f"❌ [INIT] 初始化崩潰: {e}")
+        # 在雲端環境，初始化失敗通常代表程式無法運作，預留報錯
+    
     yield
-    print("[SYSTEM] 正在關閉全域連線...")
+    
+    # 關閉資源
+    print("[EXIT] 正在關閉全域連線...")
     await global_client.aclose()
 
 app = FastAPI(title="EchoOrder Buffer Gateway", lifespan=lifespan)
@@ -762,11 +770,13 @@ async def export_orders():
 
 if __name__ == "__main__":
     import uvicorn
-    # Render 會注入 PORT 環境變數，若無則預設 10000 (Render 預設) 或 8000
-    port = int(os.environ.get("PORT", 8000))
-    print(f"[SYSTEM] 啟動伺服器於 Port: {port} (RELOAD=True)")
+    # Render 會注入 PORT 環境變數，若無則預設 8000
+    port_str = os.environ.get("PORT", "8000")
+    port = int(port_str)
+    print(f"🔥 [SYSTEM] 啟動伺服器於 Port: {port}")
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
 else:
-    # 這是被 uvicorn 命令列啟動時 (例如 Docker/Render)
+    # 這是被 uvicorn 命令列啟動時 (例如 Cloud/Docker)
     import os
-    print(f"[SYSTEM] 模組載入中... PORT={os.environ.get('PORT')}")
+    port = os.environ.get("PORT", "Unknown")
+    print(f"📡 [SYSTEM] 模組載入中... (RUNNING_ON_CLOUD, PORT={port})")
