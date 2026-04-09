@@ -102,7 +102,7 @@ def load_ai_knowledge_base() -> str:
     return "尚無外部知識庫資料。"
 
 async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
-    """使用 Gemma 3 27B IT 進行初步診斷與 FAQ 回覆 (接待員角色)"""
+    """使用 Gemma 4 31B IT 進行初步診斷與 FAQ 回覆 (接待員角色)"""
     kb_content = load_ai_knowledge_base()
     
     system_prompt = f"""
@@ -161,17 +161,14 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
     """使用 Gemma 4 31B IT 進行深度解析 (主管角色 - 支援圖片與手寫辨識)"""
     
     default_prompt = f"""
-你是一位專業的「EchoOrder 結帳小幫手」，負責從買家的對話截圖、地址貼紙、或越南文手寫單據中提取訂購資訊。
+你是一位專業的「EchoOrder 結帳小幫手」，負責從買家提供的對話截圖或地址貼紙中提取物流與聯絡資訊。
 請根據圖片內容，回傳【嚴格格式】的 JSON 資料。
 
 【重要任務】：
 1. 識別買家姓名 `buyer_name` 與電話 `phone`。
 2. 識別相關店號或門市名稱 `store_candidates` (6位數字店號、店名、或關鍵地址)。
-3. 識別訂購項目 `items` (包含 product_code 與 quantity)。
 
-【語言與辨識規則】：
-- **支援多語系**：圖片可能包含繁體中文或越南文 (Vietnamese)。
-- **支援手寫辨識**：請特別留意手寫的數量與產品名稱。
+【語言與分辨規則】：
 - **店號優先**：如果看到 6 位數字（店號），優先放入 `store_candidates`。
 
 【JSON 格式要求】：
@@ -181,12 +178,8 @@ async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[st
   "buyer_name": "姓名",
   "phone": "電話",
   "store_candidates": ["店名或6位店號"],
-  "items": [{{ "product_code": "代號", "quantity": 數量 }}],
-  "shipping_info": "對話頁面或貼紙上的完整地址（原文照抄）"
+  "shipping_info": "如果有看到完整地址，填寫在這裡"
 }}
-
-【當前商品代號表 (參考用)】：
-{json.dumps(ACTIVE_PRODUCTS, ensure_ascii=False)}
 
 【負面約束 (絕對禁止)】：
 - 絕對不要複讀你的 Role 或 Task。
