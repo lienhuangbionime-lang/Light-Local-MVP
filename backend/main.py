@@ -390,20 +390,24 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         if not image_b64:
              return {"status": "error", "message": "未接收到圖片資料"}
 
-        prompt = """你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片中提取收件資訊。
-請先判斷圖片屬於哪一種核心情境，並【嚴格遵守】其專屬規則：
+        prompt = """【STRICT JSON OUTPUT ONLY】:
+1. 嚴禁任何「思維鏈 (Chain of Thought)」或背景分析說明。
+2. 此任務為後端自動化介面，請「僅輸出」JSON 資料內容。
+3. 輸出必須直接以 `{` 開始並以 `}` 結束。
+
+你現在是「EchoOrder 結帳小幫手」。你的任務是從圖片中提取收件資訊。
+請根據畫面內容，套用以下對應的情境規則提取資料：
 
 【情境一：Google Map 資訊卡 (地圖截圖)】
 - 特徵：有店面照片、星級評分、詳細地址與中文店名（如「7-ELEVEN 旗山旗力門市」）。
-- 規則：多數資訊卡**不會顯示** 6 位數店號。**絕對禁止猜測或幻想數字**！請將你看到的純中文店名（如「旗山旗力」）以及地址優先放進 `store_candidates`。
+- 規則：**優先提取中文店名**（如「旗山旗力」），這是比對資料庫的最重要關鍵字。多數資訊卡**不會顯示** 6 位數店號。**絕對禁止猜測或幻想數字**！請將看到的完整店名與地址優先放進 `store_candidates`。
 
 【情境二：7-11 發票或收據單】
 - 特徵：有條碼、消費金額、列印時間，通常會明確印出 6 位店號與店名。
-- 規則：精準抓取 6 位店號與店名放入 `store_candidates`。**必須排除**所有年份日期（如 113、2024）、超過 6 碼的發票機號、以及夾雜英文的訂單號。
+- 規則：精準抓取 6 位店號與店名放入 `store_candidates`。**優先查看發票區塊的左下角內容**，那裡通常是正確的門市資訊。**必須排除**所有年份日期（如 113、2024）、超過 6 碼的發票機號、以及夾雜英文的訂單號。
 
 【共通要求】：
 1. 找出買家姓名 (`buyer_name`) 與 10 碼電話 (`phone`)。通常顯示在對話視窗最上方或手寫單據的空白處。
-2. 禁止任何非 JSON 的前導文字與尾綴。
 
 【JSON 格式要求】：
 {
@@ -419,7 +423,12 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         print(f"[AI_FILL] OCR Transcription Length: {len(ocr_text) if ocr_text else 0}")
 
         # 2. Step 2: AI Analysis (grounded by OCR text)
-        extracted = await ask_gemini_secretary(text_content=ocr_text if ocr_text else "[PHOTO]", image_data_base64=image_b64, system_prompt=prompt)
+        # 為了提升速度與穩定性，如果已經有 OCR 文字，第二步則不需要再傳圖片
+        extracted = await ask_gemini_secretary(
+            text_content=ocr_text if ocr_text else "[PHOTO]", 
+            image_data_base64=None if ocr_text else image_b64, 
+            system_prompt=prompt
+        )
         
         # 3. Initialize result structure if AI failed
         if not extracted or not isinstance(extracted, dict):
@@ -433,12 +442,19 @@ async def ai_fill_checkout(order_id: str, request: Request, s: Optional[str] = N
         # 5. [ROBUST] OCR individual candidate extraction
         from backend.services.parse_service import extract_store_candidates_from_ocr, extract_store_names_from_ocr
         from backend.services.store_service import resolve_store_info, _STORE_BY_NAME
+        import re
         
         ocr_candidates = []
         if ocr_text:
+            # A. 萃取 6 位店號
             ocr_candidates = extract_store_candidates_from_ocr(ocr_text)
+            # B. 萃取精確名稱 (對齊資料庫)
             name_matched_ids = extract_store_names_from_ocr(ocr_text, _STORE_BY_NAME)
-            ocr_candidates = name_matched_ids + ocr_candidates
+            # C. [NEW] 廣域門市名稱偵測 (針對地圖情境)
+            # 搜尋 「7-11 XX門市」 或 「XX門市」
+            branch_matches = re.findall(r'([\u4e00-\u9fa5]{2,10}門市)', ocr_text)
+            
+            ocr_candidates = name_matched_ids + ocr_candidates + branch_matches
         
         # 6. Merge results
         ai_candidates = extracted.get("store_candidates", [])

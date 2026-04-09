@@ -42,20 +42,32 @@ async def call_ai_studio(model_name: str, contents: List[Dict], system_instructi
     """
     if not config.GEMINI_API_KEY:
         return None
-        
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={config.GEMINI_API_KEY}"
-    
     payload: Dict[str, Any] = {"contents": contents}
     if system_instruction:
-        payload["system_instruction"] = {
-            "parts": [{"text": system_instruction}]
-        }
-    
+        # 將系統指令直接注入第一個內容的最前方
+        if contents and "parts" in contents[0]:
+            contents[0]["parts"].insert(0, {"text": f"SYSTEM_INSTRUCTION:\n{system_instruction}\n\n---"})
+            
     try:
         res = await global_client.post(url, json=payload, timeout=60.0)
         if res.status_code == 200:
             raw_res = res.json()
-            return raw_res.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            candidates = raw_res.get("candidates", [])
+            if not candidates:
+                return None
+            
+            # 遍歷所有 parts 找尋文字 (避免被 thought 或空 part 擋住)
+            parts = candidates[0].get("content", {}).get("parts", [])
+            full_text = ""
+            for p in parts:
+                if "text" in p:
+                    full_text += p["text"]
+            
+            if not full_text:
+                return None
+                
+            return full_text
         else:
             print(f"[AI] {model_name} 請求失敗 ({res.status_code}): {res.text}")
     except Exception as e:
@@ -141,55 +153,60 @@ async def ask_gemma_receptionist(text_content: str) -> Optional[Dict[str, Any]]:
 
 def clean_json_output(text: str) -> str:
     """
-    Strips role-echoing preamble, markdown blocks, and trailing noise from AI output.
-    Attempts to extract the first valid {...} or [...] block.
+    提升 JSON 萃取穩定性。優先尋找包含買家資訊關鍵字的區塊，避開 AI 的導讀廢話或指令覆讀。
     """
     if not text:
         return ""
     
-    # 1. Look for JSON blocks specifically
-    # Use non-greedy match for the content between braces or brackets
-    match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
-    if match:
-        return match.group(0)
+    # 1. 優先尋找「真正的」資料 JSON 區塊 (開頭必須是 {" 且包含 buyer_name)
+    # 使用 [^{]* 確保抓到的是最內層或最貼近關鍵字的左大括號
+    data_match = re.search(r'(\{[^{]*?"buyer_name"[\s\S]*?\})', text)
+    if data_match:
+        return data_match.group(1).strip()
+        
+    # 2. 備案：尋找任何包含 "buyer_name" 的大括號區塊 (較寬鬆)
+    wider_match = re.search(r'(\{[\s\S]*?"buyer_name"[\s\S]*?\})', text)
+    if wider_match:
+        return wider_match.group(1).strip()
+        
+    # 2. 備案：尋找任何大括號或中括號區塊 (傳統 Greedy 模式)
+    greedy_match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', text)
+    if greedy_match:
+        return greedy_match.group(0).strip()
     
-    # 2. Fallback: manual cleanup of common markers
+    # 3. 再備案：清除 Markdown 標記
     cleaned = text.replace("```json", "").replace("```", "").strip()
     return cleaned
 
 async def ask_gemini_secretary(text_content: str, image_data_base64: Optional[str] = None, mime_type: str = "image/jpeg", system_prompt: Optional[str] = None, history: Optional[str] = None) -> Optional[Dict]:
     """使用 Gemma 4 31B IT 進行深度解析 (主管角色 - 支援圖片與手寫辨識)"""
     
-    default_prompt = f"""
+    default_prompt = f"""【STRICT JSON OUTPUT ONLY】:
+1. 嚴禁任何「思維鏈 (Chain of Thought)」或背景分析說明。
+2. 此任務為後端自動化介面，請「僅輸出」JSON 資料內容。
+3. 輸出必須直接以 `{{` 開始並以 `}}` 結束。
+
 你是一位專業的「EchoOrder 結帳小幫手」，負責從買家提供的圖片中提取收件資訊。
-請先判斷圖片屬於哪一種核心情境，並【嚴格遵守】其專屬規則：
+請根據畫面內容，套用以下對應的情境規則提取資料：
 
 【情境一：Google Map 資訊卡 (地圖截圖)】
 - 特徵：有店面照片、星級評分、詳細地址與中文店名（如「7-ELEVEN 旗山旗力門市」）。
-- 規則：多數資訊卡**不會顯示** 6 位數店號。**絕對禁止猜測或幻想數字**！請將你看到的純中文店名（如「旗山旗力」）以及地址優先放進 `store_candidates`。
+- 規則：**優先提取中文店名**（如「旗山旗力」），這是比對資料庫的最重要關鍵字。多數資訊卡**不會顯示** 6 位數店號。**絕對禁止猜測或幻想數字**！請將看到的完整店名與地址優先放進 `store_candidates`。
 
 【情境二：7-11 發票或收據單】
-- 特徵：有條碼、消費金額、列印時間，通常會明確印出 6 位店號與店名。
-- 規則：精準抓取 6 位店號與店名放入 `store_candidates`。**必須排除**所有年份日期（如 113、2024）、超過 6 碼的發票機號、以及夾雜英文的訂單號。
+- 特徵：有條碼、消費金額、列印時間，通常會明確印出 6 位 store ID 與店名。
+- 規則：精準抓取 6 位店號與店名放入 `store_candidates`。**優先查看發票區塊的左下角內容**，那裡通常是正確的門市資訊。**必須排除**所有年份日期（如 113、2024）、超過 6 碼的發票機號、以及夾雜英文的訂單號。
 
 【共通要求】：
 1. 找出買家姓名 (`buyer_name`) 與 10 碼電話 (`phone`)。通常顯示在對話視窗最上方或手寫單據的空白處。
-2. 禁止任何非 JSON 的前導文字與尾綴。
 
 【JSON 格式要求】：
-回傳必須僅包含 JSON 內容，禁止任何 Role/Task 說明、禁止前導文字。
-格式範本：
 {{
   "buyer_name": "買家姓名",
   "phone": "10 碼電話",
   "store_candidates": ["確切看到的店名號或名字"],
   "shipping_info": "如果你看到完整地址，請放在這裡"
 }}
-
-【負面約束 (絕對禁止)】：
-- 絕對不要複讀你的 Role 或 Task。
-- 不要回傳 Markdown 代碼塊（不要 ```json）。
-- 不要添加任何解釋，直接從 `{{` 開始輸出。
 """
     final_system_prompt = system_prompt if system_prompt else default_prompt
     
